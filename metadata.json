@@ -1,0 +1,6 @@
+{
+  "name": "Barale - Logística & Transporte Dashboard",
+  "description": "Dashboard interactivo y dinámico de transporte de cargas, facturación, viajes, flota propia, fleteros y rentabilidad operativa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
