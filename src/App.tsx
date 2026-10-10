@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { INITIAL_TRIPS, calculateMetrics } from './data/tripsData';
 import { TripRecord } from './types/logistics';
 import { KPICards } from './components/KPICards';
@@ -31,10 +31,36 @@ import {
   UserPlus
 } from 'lucide-react';
 
+const STORAGE_KEY = 'barale_trips_data_v1';
+
 export default function App() {
-  const [trips, setTrips] = useState<TripRecord[]>(INITIAL_TRIPS);
+  // Carga automática desde localStorage para persistir los datos entre sesiones
+  const [trips, setTrips] = useState<TripRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.error('Error al recuperar datos de localStorage:', err);
+    }
+    return INITIAL_TRIPS;
+  });
+
   const [selectedTrip, setSelectedTrip] = useState<TripRecord | null>(null);
-  
+
+  // Guardado automático inmediato en localStorage ante cualquier carga o cambio
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
+    } catch (err) {
+      console.error('Error al guardar datos en localStorage:', err);
+    }
+  }, [trips]);
+
   // Modals state
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -103,7 +129,6 @@ export default function App() {
 
   // Add driver
   const handleAddDriver = (driver: { name: string; transporte: string; tipo: 'Propio' | 'Fletero'; codChofer: string }) => {
-    // Register as template trip or notify user
     const simulatedTrip: TripRecord = {
       id: `CHO-${Date.now().toString().slice(-4)}`,
       ejercicio: 2026,
@@ -202,7 +227,7 @@ export default function App() {
     setTrips(prev => [simulatedTrip, ...prev]);
   };
 
-  // Import trips
+  // Import trips from CSV/Excel
   const handleImportTrips = (imported: TripRecord[]) => {
     setTrips(imported);
   };
@@ -218,7 +243,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-base font-bold tracking-tight text-white leading-none">
-              Barale · Logística & Transporte
+              Logística & Transporte Dashboard
             </h1>
             <span className="text-[11px] text-slate-400 font-normal">
               Operaciones Bunge / Transporte Juan y Miguel
@@ -270,20 +295,20 @@ export default function App() {
             <span>XLSX</span>
           </button>
 
-          {/* Importar */}
+          {/* Importar Excel */}
           <button
             onClick={() => setIsUploadOpen(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
             title="Importar Excel o CSV"
           >
             <Upload className="w-3.5 h-3.5 text-purple-400" />
-            <span className="hidden xl:inline">Importar</span>
+            <span className="hidden xl:inline">Importar Excel</span>
           </button>
 
           {/* Botón Principal: + Nuevo Viaje */}
           <button
             onClick={() => setIsNewTripOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors cursor-pointer shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors cursor-pointer shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>+ Nuevo Viaje</span>
@@ -456,7 +481,7 @@ export default function App() {
           </div>
 
           {/* Quick Direct Download Button */}
-          <div className="hidden sm:flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-3">
             <button
               onClick={() => downloadStyledColorExcel(filteredTrips)}
               className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium cursor-pointer"
@@ -492,8 +517,25 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-center text-xs text-slate-500">
-        Barale · Control de Cargas & Liquidación de Fleteros 2026. Dashboard interactivo para Transporte Juan y Miguel.
+      <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between max-w-7xl mx-auto w-full">
+        <span>Logística & Transporte Dashboard · Control de Cargas & Liquidación de Fleteros 2026.</span>
+        <div className="flex items-center gap-4 mt-2 sm:mt-0 text-[11px] text-slate-400">
+          <span className="flex items-center gap-1 text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            Autoguardado en localStorage activo
+          </span>
+          <button 
+            onClick={() => {
+              if (window.confirm('¿Deseas restablecer los datos originales de la planilla de Excel?')) {
+                localStorage.removeItem(STORAGE_KEY);
+                setTrips(INITIAL_TRIPS);
+              }
+            }}
+            className="hover:text-rose-400 underline cursor-pointer"
+          >
+            Restablecer datos originales
+          </button>
+        </div>
       </footer>
 
       {/* MODALS */}
