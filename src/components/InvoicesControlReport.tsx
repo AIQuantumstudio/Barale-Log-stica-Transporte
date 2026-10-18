@@ -14,9 +14,11 @@ import {
   ChevronDown, 
   ChevronUp,
   Tag,
-  BookOpen
+  BookOpen,
+  Calculator
 } from 'lucide-react';
 import { downloadStyledColorExcel, downloadModernExcel } from '../utils/excelExporter';
+import { ExcelFormulaBar } from './ExcelFormulaBar';
 
 interface InvoicesControlReportProps {
   trips: TripRecord[];
@@ -35,6 +37,10 @@ export const InvoicesControlReport: React.FC<InvoicesControlReportProps> = ({
   
   // Estado para expandir el Informe Administrativo de análisis
   const [showAdminReport, setShowAdminReport] = useState<boolean>(false);
+  // Estado para alternar entre ver valores ($) o ver fórmulas vivas de Excel (fx)
+  const [viewFormulasInCells, setViewFormulasInCells] = useState<boolean>(false);
+  // Fila seleccionada para inspección técnica de fórmula
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
 
   // Opciones únicas disponibles en los datos
   const fechasFacDisponibles = useMemo(() => {
@@ -224,6 +230,9 @@ export const InvoicesControlReport: React.FC<InvoicesControlReportProps> = ({
         </div>
       </div>
 
+      {/* BARRA DE FÓRMULAS DE EXCEL (FX) INTERACTIVA */}
+      <ExcelFormulaBar trips={filteredTrips} currentContext="Control de Facturas Emitidas" />
+
       {/* BLOQUE DE LA TABLA Y PARÁMETROS TAL CUAL EN LA IMAGEN */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
         {/* ENCABEZADO AZUL OFICIAL "CONTROL DE FACTURAS EMITIDAS" */}
@@ -324,10 +333,46 @@ export const InvoicesControlReport: React.FC<InvoicesControlReportProps> = ({
           </div>
         </div>
 
-        {/* SECCIÓN "DEBE." */}
-        <div className="bg-[#1E3A8A]/90 text-white font-bold px-4 py-2 text-xs uppercase tracking-wider border-y border-slate-700">
-          DEBE.
+        {/* SECCIÓN "DEBE." CON INDICADOR DE FÓRMULA EXCEL VINCULADA Y TOGGLE */}
+        <div className="bg-[#1E3A8A]/90 text-white font-bold px-4 py-2.5 text-xs uppercase tracking-wider border-y border-slate-700 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <span>DEBE. (Agrupación por Cliente Contrata Servicio)</span>
+            <span className="normal-case font-mono font-normal text-[10px] text-emerald-300 bg-slate-950/70 px-2 py-0.5 rounded border border-emerald-500/30 hidden sm:flex items-center gap-1.5">
+              <span className="font-bold text-emerald-400">fx</span>
+              <span>=SUMAR.SI('Planilla Base'!L:L; Cliente; 'Planilla Base'!AR:AR)</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewFormulasInCells(!viewFormulasInCells)}
+              className={`px-3 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                viewFormulasInCells
+                  ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm'
+                  : 'bg-slate-900/80 hover:bg-slate-800 text-slate-200 border-slate-700'
+              }`}
+              title="Alternar entre ver importes numéricos en pesos ($) o las fórmulas vivas de Excel (=SUMAR.SI...)"
+            >
+              <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{viewFormulasInCells ? 'Ver Importes ($)' : 'Ver Fórmulas Excel (fx)'}</span>
+            </button>
+          </div>
         </div>
+
+        {/* BANNER INFORMATIVO SI EL MODO FÓRMULAS ESTÁ ACTIVO */}
+        {viewFormulasInCells && (
+          <div className="bg-emerald-950/40 border-b border-emerald-800/50 px-4 py-2 text-[11px] text-emerald-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>
+                <strong>Modo Fórmulas Activo:</strong> Se muestran las fórmulas vivas que capturan la información de la Hoja 1 y la colocan en esta hoja.
+              </span>
+            </div>
+            <span className="text-[10px] text-emerald-400 font-mono">
+              Origen: Sec. 3 Col L (Cliente) + Sec. 6 Col AR (Total Facturado)
+            </span>
+          </div>
+        )}
 
         {/* TABLA DE FACTURACIÓN POR CLIENTE */}
         <div className="overflow-x-auto">
@@ -335,54 +380,175 @@ export const InvoicesControlReport: React.FC<InvoicesControlReportProps> = ({
             <thead>
               <tr className="bg-slate-800/90 text-slate-200 font-semibold border-b border-slate-700">
                 <th className="py-2.5 px-6 font-bold text-white w-2/5 border-r border-slate-700/80">
-                  Cliente Contrata Servicio
+                  <div className="flex items-center justify-between">
+                    <span>Cliente Contrata Servicio</span>
+                    <span className="text-[10px] font-mono text-indigo-400 uppercase font-normal">
+                      Sector 3 - Col L
+                    </span>
+                  </div>
                 </th>
                 <th className="py-2.5 px-6 text-center text-slate-300 w-1/4 border-r border-slate-700/80">
-                  Fecha Liqui Fleteros
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span>Fecha Liqui Fleteros</span>
+                    <span className="text-[10px] font-mono text-blue-400 font-normal">
+                      Sec 1 - Col D
+                    </span>
+                  </div>
                 </th>
                 <th className="py-2.5 px-6 text-right font-bold text-white w-1/3">
-                  Total
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span className="text-[10px] font-mono text-emerald-400 font-normal">
+                      {viewFormulasInCells ? 'Fórmula Incrustada' : 'Total Facturado c/IVA (Sec 6 - Col AR)'}
+                    </span>
+                    <span>Total</span>
+                  </div>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {clientRows.map((row, idx) => (
-                <tr 
-                  key={row.cliente}
-                  className={`hover:bg-slate-800/40 transition-colors ${
-                    idx % 2 === 0 ? 'bg-slate-900/60' : 'bg-slate-900/20'
-                  }`}
-                >
-                  {/* Cliente */}
-                  <td className="py-2.5 px-6 font-semibold text-white border-r border-slate-800">
-                    {row.cliente}
-                  </td>
+              {clientRows.map((row, idx) => {
+                const isSelected = selectedRowIndex === idx;
+                const excelRowNumber = 13 + idx;
+                const clientFormula = `=SUMAR.SI('Planilla Base (Operativa)'!$L$3:$L$50; "${row.cliente}"; 'Planilla Base (Operativa)'!$AR$3:$AR$50)`;
 
-                  {/* Fecha Liqui Fleteros */}
-                  <td className="py-2.5 px-6 text-center text-slate-400 border-r border-slate-800">
-                    {row.fechaLiqui || ""}
-                  </td>
+                return (
+                  <tr 
+                    key={row.cliente}
+                    onClick={() => setSelectedRowIndex(isSelected ? null : idx)}
+                    className={`transition-colors cursor-pointer ${
+                      isSelected 
+                        ? 'bg-blue-950/60 ring-1 ring-blue-500' 
+                        : idx % 2 === 0 ? 'bg-slate-900/60 hover:bg-slate-800/50' : 'bg-slate-900/20 hover:bg-slate-800/50'
+                    }`}
+                    title="Haga clic para ver el desglose técnico y trazabilidad de la fórmula de esta celda"
+                  >
+                    {/* Cliente */}
+                    <td className="py-2.5 px-6 font-semibold text-white border-r border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <span>{row.cliente}</span>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          A{excelRowNumber}
+                        </span>
+                      </div>
+                    </td>
 
-                  {/* Total */}
-                  <td className="py-2.5 px-6 text-right font-mono font-bold text-slate-100 tabular-nums">
-                    {formatNumber(row.total, 2)}
-                  </td>
-                </tr>
-              ))}
+                    {/* Fecha Liqui Fleteros */}
+                    <td className="py-2.5 px-6 text-center text-slate-400 border-r border-slate-800 font-mono text-[11px]">
+                      {row.fechaLiqui || "-"}
+                    </td>
+
+                    {/* Total (Valor o Fórmula) */}
+                    <td className="py-2.5 px-6 text-right font-mono tabular-nums">
+                      {viewFormulasInCells ? (
+                        <div className="text-right">
+                          <span className="text-[10px] text-emerald-300 bg-slate-950 px-2 py-0.5 rounded border border-emerald-500/30 inline-block font-mono font-semibold">
+                            {clientFormula}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2">
+                          {isSelected && (
+                            <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded font-mono">
+                              C{excelRowNumber}
+                            </span>
+                          )}
+                          <span className="font-bold text-slate-100 text-[13px]">
+                            {formatNumber(row.total, 2)}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             {/* FILA DE TOTAL GENERAL: IDÉNTICA A LA IMAGEN */}
             <tfoot>
               <tr className="bg-[#1E3A8A] text-white font-bold text-sm border-t-2 border-slate-700">
                 <td colSpan={2} className="py-3 px-6 text-left">
-                  Total general --- Punto Vta 12
+                  <div className="flex items-center justify-between">
+                    <span>Total general --- Punto Vta 12</span>
+                    <span className="text-[10px] font-mono text-blue-200 font-normal">
+                      Celda C{13 + clientRows.length}
+                    </span>
+                  </div>
                 </td>
                 <td className="py-3 px-6 text-right font-mono text-base tracking-tight text-white tabular-nums">
-                  {formatNumber(totalGeneral, 2)}
+                  {viewFormulasInCells ? (
+                    <span className="text-[11px] text-emerald-300 bg-slate-950/90 px-2.5 py-1 rounded border border-emerald-400 inline-block">
+                      =SUMA(C13:C{12 + clientRows.length})
+                    </span>
+                  ) : (
+                    <span>{formatNumber(totalGeneral, 2)}</span>
+                  )}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
+
+        {/* PANEL INSPECTOR DE FÓRMULA VIVA DE LA CELDA SELECCIONADA */}
+        {selectedRowIndex !== null && clientRows[selectedRowIndex] && (
+          <div className="p-4 bg-slate-950 border-t border-slate-800 text-xs animate-in fade-in duration-150">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="font-mono bg-blue-600 text-white font-bold px-2 py-0.5 rounded text-[11px]">
+                  Celda C{13 + selectedRowIndex}
+                </span>
+                <span className="font-bold text-white text-sm">
+                  {clientRows[selectedRowIndex].cliente}
+                </span>
+                <span className="text-slate-400 text-[11px]">
+                  (Total: <strong className="text-emerald-400 font-mono">{formatCurrency(clientRows[selectedRowIndex].total)}</strong>)
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedRowIndex(null)}
+                className="text-slate-500 hover:text-slate-300 text-[11px] cursor-pointer"
+              >
+                Cerrar Inspector ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+              <div className="bg-slate-900/90 p-2.5 rounded border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                  1. De dónde toma la información (Captura)
+                </span>
+                <p className="text-slate-300 leading-relaxed">
+                  Busca el criterio <span className="text-indigo-400 font-semibold font-mono">"{clientRows[selectedRowIndex].cliente}"</span> en el <strong className="text-white">Sector 3 (Columna L: Cliente Contrata)</strong> de la Hoja 1.
+                </p>
+              </div>
+
+              <div className="bg-slate-900/90 p-2.5 rounded border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                  2. Qué columna suma (Operación)
+                </span>
+                <p className="text-slate-300 leading-relaxed">
+                  Totaliza las celdas correspondientes del <strong className="text-white">Sector 6 (Columna AR: Total Facturado c/IVA)</strong> de la Hoja 1.
+                </p>
+              </div>
+
+              <div className="bg-slate-900/90 p-2.5 rounded border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                  3. Dónde coloca el resultado (Destino)
+                </span>
+                <p className="text-slate-300 leading-relaxed">
+                  Incrusta el importe consolidado en la <strong className="text-white">Hoja 5 (Columna C: DEBE)</strong>, alimentando la fila del cliente y el Total General Punto Vta 12.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-2.5 pt-2 border-t border-slate-900 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
+              <span className="text-emerald-300">
+                fx = SUMAR.SI('Planilla Base (Operativa)'!$L$3:$L$50; "{clientRows[selectedRowIndex].cliente}"; 'Planilla Base (Operativa)'!$AR$3:$AR$50)
+              </span>
+              <span className="text-slate-500 text-[10px]">
+                Sintaxis nativa en XLSX y XLS 100% interactiva
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* INFORME ADMINISTRATIVO DETALLADO (DOCUMENTO TÉCNICO INCORPORADO) */}

@@ -362,6 +362,18 @@ export const DocumentControlReport: React.FC<DocumentControlReportProps> = ({
 
       {/* ESTRUCTURA DE LA TABLA DINÁMICA (Idéntica a la Imagen Adjunta) */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        {/* Barra FX de Excel */}
+        <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 text-[11px] font-mono flex flex-wrap items-center justify-between gap-2 text-slate-300">
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-400 font-bold">fx</span>
+            <span className="text-slate-400">Fórmula de Control Excel:</span>
+            <code className="text-emerald-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              =SI(O(W3="Pendiente"; AA3="Pendiente"); 1; 0)
+            </code>
+          </div>
+          <span className="text-slate-500 text-[10px]">Total General de Tabla: =SUMA(F11:F{10 + filteredRecords.length})</span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>

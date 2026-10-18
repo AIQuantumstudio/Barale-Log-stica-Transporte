@@ -11,9 +11,11 @@ import {
   Eye, 
   Plus,
   Layers,
-  Columns
+  Columns,
+  Calculator
 } from 'lucide-react';
 import { downloadModernExcel, downloadStyledColorExcel, SECTORS } from '../utils/excelExporter';
+import { ExcelFormulaBar } from './ExcelFormulaBar';
 
 interface TripsTableProps {
   trips: TripRecord[];
@@ -45,6 +47,7 @@ export const TripsTable: React.FC<TripsTableProps> = ({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<'standard' | 'all10sectors'>('standard');
+  const [showFormulasInTable, setShowFormulasInTable] = useState<boolean>(false);
   const itemsPerPage = 10;
 
   // Filtered trips
@@ -207,7 +210,26 @@ export const TripsTable: React.FC<TripsTableProps> = ({
             <Download className="w-3.5 h-3.5 text-blue-400" />
             <span>Colores (.xls)</span>
           </button>
+
+          {/* MODO FÓRMULAS VIVAS EN TABLA */}
+          <button
+            onClick={() => setShowFormulasInTable(!showFormulasInTable)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
+              showFormulasInTable
+                ? 'bg-emerald-600 text-white border-emerald-400 shadow-xs'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
+            title="Alternar entre ver importes numéricos ($) o las fórmulas vivas de Excel incrustadas en las celdas"
+          >
+            <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{showFormulasInTable ? 'Ver Valores ($)' : 'Modo Fórmulas (fx)'}</span>
+          </button>
         </div>
+      </div>
+
+      {/* BARRA DE FÓRMULAS DE EXCEL (FX) INTERACTIVA */}
+      <div className="p-3 bg-slate-950/70 border-b border-slate-800">
+        <ExcelFormulaBar trips={filteredTrips} currentContext="Planilla Base (Operativa)" />
       </div>
 
       {/* Leyenda de los 10 Sectores (Idéntica a la imagen) */}
@@ -464,7 +486,15 @@ export const TripsTable: React.FC<TripsTableProps> = ({
                   <td className="py-2 px-3">{t.producto}</td>
                   <td className="py-2 px-3 text-right font-mono">{t.kmPuntoCarga || 0}</td>
                   <td className="py-2 px-3 text-right font-mono">{t.kmDestino || 0}</td>
-                  <td className="py-2 px-3 text-right font-mono border-r-2 border-purple-800">{t.totalKm || 0}</td>
+                  <td className="py-2 px-3 text-right font-mono border-r-2 border-purple-800">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-purple-300 font-mono bg-purple-950/70 px-1.5 py-0.5 rounded border border-purple-800/60">
+                        {`=W${3 + paginatedTrips.indexOf(t)}+X${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      t.totalKm || 0
+                    )}
+                  </td>
 
                   {/* 5. Remitos y Toneladas */}
                   <td className="py-2 px-3 font-mono">{t.remitoRemitente || "-"}</td>
@@ -475,7 +505,15 @@ export const TripsTable: React.FC<TripsTableProps> = ({
                   <td className="py-2 px-3 text-center">{t.factorCorreccion || "-"}</td>
                   <td className="py-2 px-3 text-right font-mono">{t.kgsAforado || 0}</td>
                   <td className="py-2 px-3 text-right font-mono">{t.kgsDestino || 0}</td>
-                  <td className="py-2 px-3 text-right font-mono">{t.difKgs || 0}</td>
+                  <td className="py-2 px-3 text-right font-mono">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-teal-300 font-mono bg-teal-950/70 px-1.5 py-0.5 rounded border border-teal-800/60">
+                        {`=AG${3 + paginatedTrips.indexOf(t)}-AF${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      t.difKgs || 0
+                    )}
+                  </td>
                   <td className="py-2 px-3 text-right font-mono border-r-2 border-teal-800">{t.tarifaTnKm || 0}</td>
 
                   {/* 6. Facturación y Ventas */}
@@ -485,22 +523,86 @@ export const TripsTable: React.FC<TripsTableProps> = ({
                   <td className="py-2 px-3 font-mono">{t.nroProformaOC || "-"}</td>
                   <td className="py-2 px-3 text-right font-mono">{t.kgsFacturados}</td>
                   <td className="py-2 px-3 text-right font-mono">{formatCurrency(t.tarifa)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">{formatCurrency(t.netoGravado)}</td>
-                  <td className="py-2 px-3 text-right font-mono">{formatCurrency(t.iva)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-bold text-white border-r-2 border-green-800">{formatCurrency(t.totalFacturado)}</td>
+                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                        {`=AN${3 + paginatedTrips.indexOf(t)}*AO${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      formatCurrency(t.netoGravado)
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                        {`=AP${3 + paginatedTrips.indexOf(t)}*0.21`}
+                      </span>
+                    ) : (
+                      formatCurrency(t.iva)
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono font-bold text-white border-r-2 border-green-800">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                        {`=AP${3 + paginatedTrips.indexOf(t)}+AQ${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      formatCurrency(t.totalFacturado)
+                    )}
+                  </td>
 
                   {/* 7. Liquidación Fleteros */}
                   <td className="py-2 px-3 text-right font-mono">{t.coeComision || (t.tipoTransporte === 'Fletero' ? '0,27' : '1,00')}</td>
                   <td className="py-2 px-3 text-right font-mono">{t.tnsLiquiFletero}</td>
                   <td className="py-2 px-3 text-right font-mono">{formatCurrency(t.tarifaFletero)}</td>
-                  <td className="py-2 px-3 text-right font-mono">{formatCurrency(t.tarifaFleteroConIva || t.tarifaFletero * 1.21)}</td>
+                  <td className="py-2 px-3 text-right font-mono">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-amber-300 font-mono bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-800/60">
+                        {`=AU${3 + paginatedTrips.indexOf(t)}*1.21`}
+                      </span>
+                    ) : (
+                      formatCurrency(t.tarifaFleteroConIva || t.tarifaFletero * 1.21)
+                    )}
+                  </td>
                   <td className="py-2 px-3 text-right font-mono">{formatCurrency(t.debeFlete || 0)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-semibold text-amber-400">-{formatCurrency(t.costoFletero)}</td>
-                  <td className="py-2 px-3 text-right font-mono border-r-2 border-amber-800">{formatCurrency(t.saldoFlete || 0)}</td>
+                  <td className="py-2 px-3 text-right font-mono font-semibold text-amber-400">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-amber-300 font-mono bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-800/60">
+                        {`=AT${3 + paginatedTrips.indexOf(t)}*AU${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      `-${formatCurrency(t.costoFletero)}`
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono border-r-2 border-amber-800">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-amber-300 font-mono bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-800/60">
+                        {`=AX${3 + paginatedTrips.indexOf(t)}-AW${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      formatCurrency(t.saldoFlete || 0)
+                    )}
+                  </td>
 
                   {/* 8. Rentabilidad Barale */}
-                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">{formatCurrency(t.margenPesos)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-semibold">{formatPercent(t.margenPct)}</td>
+                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-cyan-300 font-mono bg-cyan-950/70 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                        {`=AP${3 + paginatedTrips.indexOf(t)}-AX${3 + paginatedTrips.indexOf(t)}`}
+                      </span>
+                    ) : (
+                      formatCurrency(t.margenPesos)
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono font-semibold">
+                    {showFormulasInTable ? (
+                      <span className="text-[10px] text-cyan-300 font-mono bg-cyan-950/70 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                        {`=SI(AP>0;AZ/AP;0)`}
+                      </span>
+                    ) : (
+                      formatPercent(t.margenPct)
+                    )}
+                  </td>
                   <td className="py-2 px-3 text-center border-r-2 border-cyan-800 font-semibold">{t.estadoFacturacion}</td>
 
                   {/* 9. Info Tanques */}
