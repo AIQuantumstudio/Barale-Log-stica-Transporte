@@ -229,7 +229,7 @@ export const TripsTable: React.FC<TripsTableProps> = ({
 
       {/* BARRA DE FÓRMULAS DE EXCEL (FX) INTERACTIVA */}
       <div className="p-3 bg-slate-950/70 border-b border-slate-800">
-        <ExcelFormulaBar trips={filteredTrips} currentContext="Planilla Base (Operativa)" />
+        <ExcelFormulaBar trips={filteredTrips} currentContext="Base de Datos" />
       </div>
 
       {/* Leyenda de los 10 Sectores (Idéntica a la imagen) */}

@@ -38,7 +38,7 @@ import {
   Receipt
 } from 'lucide-react';
 
-const STORAGE_KEY = 'barale_trips_data_v1';
+const STORAGE_KEY = 'barale_trips_data_v2';
 
 export default function App() {
   // Carga automática desde localStorage para persistir los datos entre sesiones
@@ -47,7 +47,7 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_TRIPS.length) {
           return parsed;
         }
       }

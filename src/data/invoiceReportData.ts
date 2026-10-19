@@ -90,11 +90,12 @@ export const getDetailedInvoiceRecords = (trips: TripRecord[]): DetailedInvoiceR
   // Map para acumular por clave (cliente + factura)
   const grouped: Record<string, DetailedInvoiceRow> = {};
 
-  // Inicializar con la base canónica
+  // Inicializar con la base canónica vinculando la fecha de liquidación del fletero
   CANONICAL_DETAILED_INVOICES.forEach(item => {
     const key = `${item.cliente}___${item.fac}`;
+    const matchingTrip = trips.find(t => t.factura === item.fac);
     grouped[key] = {
-      fechaLiqui: item.fechaLiqui || '',
+      fechaLiqui: item.fechaLiqui || matchingTrip?.fechaLiquiFleteros || 'ago-26',
       cliente: item.cliente,
       fac: item.fac,
       fechaFac: item.fechaFac,

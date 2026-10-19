@@ -99,9 +99,9 @@ const FORMULAS_LIST: FormulaItem[] = [
     sector: 'Hoja 5 (Control Facturas Emitidas)',
     color: '#4338CA',
     cellAddress: 'Hoja 5 - Columna C',
-    formulaDisplay: '= SUMAR.SI(\'Planilla Base\'!ClienteContrata; [Cliente]; \'Planilla Base\'!TotalFacturado)',
-    excelFormula: '=SUMIF(\'Planilla Base (Operativa)\'!$L$3:$L$50, A12, \'Planilla Base (Operativa)\'!$AR$3:$AR$50)',
-    sourceDescription: 'Busca el nombre del cliente en la Columna L de la Planilla Base y totaliza su Columna AR.',
+    formulaDisplay: '= SUMAR.SI(\'Base de Datos\'!ClienteContrata; [Cliente]; \'Base de Datos\'!TotalFacturado)',
+    excelFormula: '=SUMIF(\'Base de Datos\'!$L$3:$L$80, A13, \'Base de Datos\'!$AR$3:$AR$80)',
+    sourceDescription: 'Busca el nombre del cliente en la Columna L de la Base de Datos y totaliza su Columna AR.',
     targetDescription: 'Se coloca en la Hoja 5 en cada fila de cliente consolidando el total con IVA.',
     calculate: (trips) => formatCurrency(trips.reduce((acc, t) => acc + (t.totalFacturado || 0), 0))
   },

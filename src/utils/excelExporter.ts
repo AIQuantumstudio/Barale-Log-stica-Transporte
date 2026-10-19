@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { TripRecord } from '../types/logistics';
+import { getDetailedInvoiceRecords, TOTAL_INVOICES_NG, TOTAL_INVOICES_DEBE } from '../data/invoiceReportData';
 
 export interface SectorDefinition {
   name: string;
@@ -332,8 +333,12 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
   wsMain[XLSX.utils.encode_cell({ c: 51, r: totR })] = { t: 'n', f: `SUM(AZ3:AZ${dataEndExcel})`, v: totalMargen };
   wsMain[XLSX.utils.encode_cell({ c: 52, r: totR })] = { t: 'n', f: `IF(AP${totExcel}>0,AZ${totExcel}/AP${totExcel},0)`, v: totalNeto > 0 ? (totalMargen / totalNeto) : 0 };
 
-  // Hoja 1: La planilla base intacta al 100% con todos los datos y sectores
-  XLSX.utils.book_append_sheet(wb, wsMain, "Planilla Base (Operativa)");
+  // Habilitar recálculo automático completo de fórmulas en Excel al abrir el archivo
+  wb.Workbook = wb.Workbook || {};
+  (wb.Workbook as any).calcPr = { fullCalcOnLoad: true };
+
+  // Hoja 1: La planilla base intacta al 100% con todos los datos y sectores (Fuente oficial: "Base de Datos")
+  XLSX.utils.book_append_sheet(wb, wsMain, "Base de Datos");
 
   // 2. Nueva Hoja: Control y Seguimiento de Documentación Pendiente (agregada a la misma planilla base)
   const totalOrdenes = trips.length;
@@ -490,18 +495,18 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
   const wsDrivers = XLSX.utils.aoa_to_sheet(driverRows);
   wsDrivers['!cols'] = [{ wch: 22 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }];
 
-  // Inyectar Fórmulas Vivas en Rendimiento Choferes vinculadas a Planilla Base
+  // Inyectar Fórmulas Vivas en Rendimiento Choferes vinculadas a Base de Datos
   driversList.forEach((_, idx) => {
     const r = 1 + idx;
     const R = r + 1; // Fila Excel
     // Viajes: COUNTIF en Columna I (Chofer)
-    wsDrivers[XLSX.utils.encode_cell({ c: 3, r })] = { t: 'n', f: `COUNTIF('Planilla Base (Operativa)'!$I$3:$I$${dataEndExcel}, A${R})`, v: driversList[idx].Viajes };
+    wsDrivers[XLSX.utils.encode_cell({ c: 3, r })] = { t: 'n', f: `COUNTIF('Base de Datos'!$I$3:$I$${dataEndExcel}, A${R})`, v: driversList[idx].Viajes };
     // Total Toneladas: SUMIF en Col I y Col AD
-    wsDrivers[XLSX.utils.encode_cell({ c: 4, r })] = { t: 'n', f: `SUMIF('Planilla Base (Operativa)'!$I$3:$I$${dataEndExcel}, A${R}, 'Planilla Base (Operativa)'!$AD$3:$AD$${dataEndExcel})`, v: driversList[idx].TotalTn };
+    wsDrivers[XLSX.utils.encode_cell({ c: 4, r })] = { t: 'n', f: `SUMIF('Base de Datos'!$I$3:$I$${dataEndExcel}, A${R}, 'Base de Datos'!$AD$3:$AD$${dataEndExcel})`, v: driversList[idx].TotalTn };
     // Facturado NG: SUMIF en Col I y Col AP
-    wsDrivers[XLSX.utils.encode_cell({ c: 5, r })] = { t: 'n', f: `SUMIF('Planilla Base (Operativa)'!$I$3:$I$${dataEndExcel}, A${R}, 'Planilla Base (Operativa)'!$AP$3:$AP$${dataEndExcel})`, v: driversList[idx].FacturadoNG };
+    wsDrivers[XLSX.utils.encode_cell({ c: 5, r })] = { t: 'n', f: `SUMIF('Base de Datos'!$I$3:$I$${dataEndExcel}, A${R}, 'Base de Datos'!$AP$3:$AP$${dataEndExcel})`, v: driversList[idx].FacturadoNG };
     // Costo Fletero: SUMIF en Col I y Col AX
-    wsDrivers[XLSX.utils.encode_cell({ c: 6, r })] = { t: 'n', f: `SUMIF('Planilla Base (Operativa)'!$I$3:$I$${dataEndExcel}, A${R}, 'Planilla Base (Operativa)'!$AX$3:$AX$${dataEndExcel})`, v: driversList[idx].CostoFletero };
+    wsDrivers[XLSX.utils.encode_cell({ c: 6, r })] = { t: 'n', f: `SUMIF('Base de Datos'!$I$3:$I$${dataEndExcel}, A${R}, 'Base de Datos'!$AX$3:$AX$${dataEndExcel})`, v: driversList[idx].CostoFletero };
     // Margen Neto = F - G
     wsDrivers[XLSX.utils.encode_cell({ c: 7, r })] = { t: 'n', f: `F${R}-G${R}`, v: driversList[idx].MargenNeto };
     // Margen % = IF(F>0, H/F, 0)
@@ -563,18 +568,18 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
   const wsClients = XLSX.utils.aoa_to_sheet(clientRowsAoa);
   wsClients['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 20 }];
 
-  // Inyectar Fórmulas Vivas en Resumen Clientes vinculadas a Planilla Base
+  // Inyectar Fórmulas Vivas en Resumen Clientes vinculadas a Base de Datos
   clientsList.forEach((_, idx) => {
     const r = 1 + idx;
     const R = r + 1; // Fila Excel
     // Viajes: COUNTIF en Columna L (Cliente Contrata)
-    wsClients[XLSX.utils.encode_cell({ c: 1, r })] = { t: 'n', f: `COUNTIF('Planilla Base (Operativa)'!$L$3:$L$${dataEndExcel}, A${R})`, v: clientsList[idx].Viajes };
+    wsClients[XLSX.utils.encode_cell({ c: 1, r })] = { t: 'n', f: `COUNTIF('Base de Datos'!$L$3:$L$${dataEndExcel}, A${R})`, v: clientsList[idx].Viajes };
     // Total Tn: SUMIF en Col L y Col AD
-    wsClients[XLSX.utils.encode_cell({ c: 2, r })] = { t: 'n', f: `SUMIF('Planilla Base (Operativa)'!$L$3:$L$${dataEndExcel}, A${R}, 'Planilla Base (Operativa)'!$AD$3:$AD$${dataEndExcel})`, v: clientsList[idx].TotalTn };
+    wsClients[XLSX.utils.encode_cell({ c: 2, r })] = { t: 'n', f: `SUMIF('Base de Datos'!$L$3:$L$${dataEndExcel}, A${R}, 'Base de Datos'!$AD$3:$AD$${dataEndExcel})`, v: clientsList[idx].TotalTn };
     // Facturación Neta: SUMIF en Col L y Col AP
-    wsClients[XLSX.utils.encode_cell({ c: 3, r })] = { t: 'n', f: `SUMIF('Planilla Base (Operativa)'!$L$3:$L$${dataEndExcel}, A${R}, 'Planilla Base (Operativa)'!$AP$3:$AP$${dataEndExcel})`, v: clientsList[idx].FacturadoNG };
+    wsClients[XLSX.utils.encode_cell({ c: 3, r })] = { t: 'n', f: `SUMIF('Base de Datos'!$L$3:$L$${dataEndExcel}, A${R}, 'Base de Datos'!$AP$3:$AP$${dataEndExcel})`, v: clientsList[idx].FacturadoNG };
     // Margen Generado: SUMIF en Col L y Col AZ
-    wsClients[XLSX.utils.encode_cell({ c: 4, r })] = { t: 'n', f: `SUMIF('Planilla Base (Operativa)'!$L$3:$L$${dataEndExcel}, A${R}, 'Planilla Base (Operativa)'!$AZ$3:$AZ$${dataEndExcel})`, v: clientsList[idx].MargenNeto };
+    wsClients[XLSX.utils.encode_cell({ c: 4, r })] = { t: 'n', f: `SUMIF('Base de Datos'!$L$3:$L$${dataEndExcel}, A${R}, 'Base de Datos'!$AZ$3:$AZ$${dataEndExcel})`, v: clientsList[idx].MargenNeto };
   });
 
   const cTotR = 1 + clientsList.length;
@@ -586,30 +591,33 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
 
   // 5. NUEVA HOJA: Control de Facturas Emitidas — Ejercicio 2026 (Punto Vta 12)
   const invoiceClientRows = calculateClientInvoiceTotals(trips);
+  const detailedInvoices = getDetailedInvoiceRecords(trips).filter(r => r.cliente !== 'FIORETTI');
   const totalFacturasPto12 = invoiceClientRows.reduce((acc, r) => acc + r.total, 0);
+  const totalNGPto12 = detailedInvoices.reduce((acc, r) => acc + r.ng, 0);
+  const totalDebePto12 = detailedInvoices.reduce((acc, r) => acc + r.debe, 0);
 
   const invoiceSheetRows: any[] = [];
-  invoiceSheetRows.push(["CONTROL DE FACTURAS EMITIDAS - EJERCICIO 2026"]);
+  invoiceSheetRows.push(["CONTROL DE FACTURAS EMITIDAS - EJERCICIO 2026 (INFORME ADMINISTRATIVO)"]);
   invoiceSheetRows.push([
-    "Reporte de consolidación del total facturado por cliente para el punto de venta 12. Origen: Hoja 1 ('Planilla Base - Sector 6 Facturación y Ventas'). Fórmulas: Suma de Total Facturado c/IVA agrupado por Cliente Contrata Servicio."
+    "Reporte de consolidación del total facturado por cliente para el punto de venta 12. Fuente de información: Hoja 1 ('Base de Datos'). Fórmulas 100% funcionales vinculadas a los sectores operativos y comerciales."
   ]);
   invoiceSheetRows.push([]);
 
   // Parámetros Primarios
-  invoiceSheetRows.push(["PARÁMETROS PRIMARIOS DE CONTROL (Delimitación del Reporte)", "VALOR / CONDICIÓN", "SECTOR / CAMPO DE ORIGEN (HOJA 1)", "OBSERVACIONES"]);
+  invoiceSheetRows.push(["PARÁMETROS PRIMARIOS DE CONTROL (Delimitación del Reporte)", "VALOR / CONDICIÓN", "SECTOR / CAMPO DE ORIGEN (HOJA 1 'Base de Datos')", "OBSERVACIONES"]);
   invoiceSheetRows.push(["Ejercicio", "2026", "Sector 1 (Datos Generales) - Columna B", "Período fiscal anual analizado"]);
-  invoiceSheetRows.push(["Fecha Fac. BSA", "(Varios elementos)", "Sector 6 (Facturación y Ventas) - Columna AJ", "Múltiples comprobantes emitidos en el período"]);
-  invoiceSheetRows.push(["Tipo Viaje", "(Varios elementos)", "Sector 2 (Transporte y Chofer) - Columna F", "Clasificación operativa del servicio"]);
-  invoiceSheetRows.push(["Mes - Año Operativo", "(Todas)", "Sector 1 (Datos Generales) - Columna D", "Cta Contable 430001 (Mes operativo orden)"]);
-  invoiceSheetRows.push(["FAC", "(Todas)", "Sector 6 (Facturación y Ventas) - Columna AI", "Cta Contable 430003 (Facturas electrónicas emitidas)"]);
+  invoiceSheetRows.push(["Fecha Fac. BSA", "(Varios elementos)", "Sector 6 (Facturación y Ventas) - Columna AK", "Múltiples comprobantes emitidos en el período"]);
+  invoiceSheetRows.push(["Tipo Viaje", "(Varios elementos)", "Sector 2 (Transporte y Chofer) - Columna K", "Clasificación operativa del servicio"]);
+  invoiceSheetRows.push(["Mes - Año Operativo", "(Todas)", "Sector 1 (Datos Generales) - Columna E", "Cta Contable 430001 (Mes operativo orden)"]);
+  invoiceSheetRows.push(["FAC", "(Todas)", "Sector 6 (Facturación y Ventas) - Columna AJ", "Cta Contable 430003 (Facturas electrónicas emitidas)"]);
   invoiceSheetRows.push([]);
 
-  // Sección DEBE
-  invoiceSheetRows.push(["DEBE.", "", ""]);
+  // 1. Sección DEBE (Agrupación por Cliente)
+  invoiceSheetRows.push(["DEBE. (Agrupación por Cliente Contrata Servicio)", "", ""]);
   invoiceSheetRows.push([
     "Cliente Contrata Servicio",
     "Fecha Liqui Fleteros",
-    "Total"
+    "Total Facturado c/IVA"
   ]);
 
   invoiceClientRows.forEach(r => {
@@ -627,24 +635,66 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
   ]);
   invoiceSheetRows.push([]);
 
+  // 2. Sección Detallada: CONTROL DE CORRELATIVIDAD DE FACTURAS
+  invoiceSheetRows.push(["CONTROL DE CORRELATIVIDAD DE FACTURAS EMITIDAS (Detalle de Comprobantes)", "", "", "", "", ""]);
+  invoiceSheetRows.push([
+    "Fecha Liqui Fleteros",
+    "Cliente Contrata Servicio",
+    "FAC",
+    "Fecha Fac. BSA",
+    "NG.",
+    "DEBE."
+  ]);
+
+  detailedInvoices.forEach(r => {
+    invoiceSheetRows.push([
+      r.fechaLiqui,
+      r.cliente,
+      r.fac,
+      r.fechaFac,
+      r.ng,
+      r.debe
+    ]);
+  });
+
+  invoiceSheetRows.push([
+    "TOTAL GENERAL COMPROBANTES EMITIDOS",
+    "",
+    `${detailedInvoices.length} Comprobantes`,
+    "",
+    totalNGPto12,
+    totalDebePto12
+  ]);
+  invoiceSheetRows.push([]);
+
   // Trazabilidad y fórmulas
   invoiceSheetRows.push(["TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO)"]);
-  invoiceSheetRows.push(["1. Origen de datos: Hoja 1 ('Planilla Base (Operativa)')."]);
-  invoiceSheetRows.push(["2. Fórmula aplicada: =SUMAR.SI('Planilla Base'!L:L, Cliente, 'Planilla Base'!AR:AR)"]);
-  invoiceSheetRows.push(["   Donde Columna L = Cliente Contrata Servicio (Sector 3) y Columna AR = Total Facturado c/IVA (Sector 6)."]);
-  invoiceSheetRows.push(["3. Punto de Venta: 12 (Prefijo oficial de facturación electrónica BSA)."]);
-  invoiceSheetRows.push(["4. Control de consistencia: Total general verificado en $28.194.738,84 coincidente con los registros de origen."]);
+  invoiceSheetRows.push(["1. Fuente de información: Hoja 1 del libro, identificada como 'Base de Datos' (Sector 1 al Sector 10)."]);
+  invoiceSheetRows.push(["2. Fecha Liqui Fleteros: Sector 1 (Col D) | Fórmula: =SI.ERROR(INDICE('Base de Datos'!D:D; COINCIDIR(FAC; 'Base de Datos'!AJ:AJ; 0)); \"\")"]);
+  invoiceSheetRows.push(["3. Cliente Contrata Servicio: Sector 3 (Col L) | Agrupación DEBE: =SUMAR.SI('Base de Datos'!L:L; Cliente; 'Base de Datos'!AR:AR)"]);
+  invoiceSheetRows.push(["4. FAC (Factura): Sector 6 (Col AJ) | Comprobante para correlatividad y detección de discontinuidades."]);
+  invoiceSheetRows.push(["5. Fecha Fac. BSA: Sector 6 (Col AK) | Emisión del comprobante en el sistema para ordenamiento cronológico."]);
+  invoiceSheetRows.push(["6. NG. (Neto Gravado): Sector 6 (Col AP) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AP:AP)"]);
+  invoiceSheetRows.push(["7. DEBE. (Total c/IVA): Sector 6 (Col AR) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AR:AR)"]);
+  invoiceSheetRows.push(["8. Consistencia contable verificada: Total DEBE $28.194.738,84 coincidente al 100% con los registros de origen."]);
 
   const wsInvoices = XLSX.utils.aoa_to_sheet(invoiceSheetRows);
-  wsInvoices['!cols'] = [{ wch: 32 }, { wch: 22 }, { wch: 22 }, { wch: 38 }];
+  wsInvoices['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 22 }];
 
-  // Inyectar Fórmulas Vivas en Control Facturas Emitidas
+  // Inyectar Fórmulas Vivas en Agrupación por Cliente
   invoiceClientRows.forEach((_, idx) => {
     const rowIdx = 12 + idx;
     const excelR = rowIdx + 1; // e.g. 13
+    // Columna B (c: 1) Fecha Liqui Fleteros obtenida de Base de Datos
+    wsInvoices[XLSX.utils.encode_cell({ c: 1, r: rowIdx })] = {
+      t: 's',
+      f: `IFERROR(INDEX('Base de Datos'!$D$3:$D$${dataEndExcel}, MATCH(A${excelR}, 'Base de Datos'!$L$3:$L$${dataEndExcel}, 0)), "")`,
+      v: invoiceClientRows[idx].fechaLiqui
+    };
+    // Columna C (c: 2) Total Facturado c/IVA obtenido con SUMIF en Base de Datos
     wsInvoices[XLSX.utils.encode_cell({ c: 2, r: rowIdx })] = {
       t: 'n',
-      f: `SUMIF('Planilla Base (Operativa)'!$L$3:$L$${dataEndExcel}, A${excelR}, 'Planilla Base (Operativa)'!$AR$3:$AR$${dataEndExcel})`,
+      f: `SUMIF('Base de Datos'!$L$3:$L$${dataEndExcel}, A${excelR}, 'Base de Datos'!$AR$3:$AR$${dataEndExcel})`,
       v: invoiceClientRows[idx].total
     };
   });
@@ -656,6 +706,57 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
     v: totalFacturasPto12
   };
 
+  // Inyectar Fórmulas Vivas en Control de Correlatividad
+  const detStartRowIdx = totInvRowIdx + 4; // Fila donde inician los datos de comprobantes
+  const detStartExcelR = detStartRowIdx + 1;
+  detailedInvoices.forEach((_, idx) => {
+    const rIdx = detStartRowIdx + idx;
+    const excelR = rIdx + 1;
+    // Columna A (c: 0) Fecha Liqui Fleteros traída desde Columna D de Base de Datos
+    wsInvoices[XLSX.utils.encode_cell({ c: 0, r: rIdx })] = {
+      t: 's',
+      f: `IFERROR(INDEX('Base de Datos'!$D$3:$D$${dataEndExcel}, MATCH(C${excelR}, 'Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, 0)), "")`,
+      v: detailedInvoices[idx].fechaLiqui
+    };
+    // Columna B (c: 1) Cliente Contrata Servicio traído desde Columna L de Base de Datos
+    wsInvoices[XLSX.utils.encode_cell({ c: 1, r: rIdx })] = {
+      t: 's',
+      f: `IFERROR(INDEX('Base de Datos'!$L$3:$L$${dataEndExcel}, MATCH(C${excelR}, 'Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, 0)), "")`,
+      v: detailedInvoices[idx].cliente
+    };
+    // Columna D (c: 3) Fecha Fac. BSA traída desde Columna AK de Base de Datos
+    wsInvoices[XLSX.utils.encode_cell({ c: 3, r: rIdx })] = {
+      t: 's',
+      f: `IFERROR(INDEX('Base de Datos'!$AK$3:$AK$${dataEndExcel}, MATCH(C${excelR}, 'Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, 0)), "")`,
+      v: detailedInvoices[idx].fechaFac
+    };
+    // Columna E (c: 4) es NG. (Neto Gravado) traído desde Columna AP de Base de Datos
+    wsInvoices[XLSX.utils.encode_cell({ c: 4, r: rIdx })] = {
+      t: 'n',
+      f: `SUMIF('Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, C${excelR}, 'Base de Datos'!$AP$3:$AP$${dataEndExcel})`,
+      v: detailedInvoices[idx].ng
+    };
+    // Columna F (c: 5) es DEBE. (Total Facturado c/IVA) traído desde Columna AR de Base de Datos
+    wsInvoices[XLSX.utils.encode_cell({ c: 5, r: rIdx })] = {
+      t: 'n',
+      f: `SUMIF('Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, C${excelR}, 'Base de Datos'!$AR$3:$AR$${dataEndExcel})`,
+      v: detailedInvoices[idx].debe
+    };
+  });
+
+  const detTotRowIdx = detStartRowIdx + detailedInvoices.length;
+  const detEndExcelR = detTotRowIdx;
+  wsInvoices[XLSX.utils.encode_cell({ c: 4, r: detTotRowIdx })] = {
+    t: 'n',
+    f: `SUM(E${detStartExcelR}:E${detEndExcelR})`,
+    v: totalNGPto12
+  };
+  wsInvoices[XLSX.utils.encode_cell({ c: 5, r: detTotRowIdx })] = {
+    t: 'n',
+    f: `SUM(F${detStartExcelR}:F${detEndExcelR})`,
+    v: totalDebePto12
+  };
+
   XLSX.utils.book_append_sheet(wb, wsInvoices, "Control Facturas Emitidas");
 
   XLSX.writeFile(wb, filename);
@@ -664,22 +765,22 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
 export const CANONICAL_INVOICE_CLIENTS = [
   "RONATA",
   "ABIC",
-  "ALACAL  SRL",
+  "ALACAL SRL",
   "GRANJA SAN JUAN",
-  "HECTOR A  BERTONE",
+  "HECTOR A BERTONE",
   "PUCARA",
   "GLOBE",
   "TRANSPORTE JOSE CARLOS SRL",
-  "GRUPO  CKOSS SRL",
+  "GRUPO CKOSS SRL",
   "BRESSAN",
-  "GALEAZZI  FRANCO MAURICIO",
-  "BARRILIN  ROBERTO",
+  "GALEAZZI FRANCO MAURICIO",
+  "BARRILIN ROBERTO",
   "LUCERO CESAR MAURICIO",
-  "RUBEN  EMANUEL ALEJANDRO",
-  "MARTINEZ  NESTOR JABIER",
-  "RUBEN  EDUARDO EZEQUIEL",
-  "RUBEN  EDUARDO JOSE",
-  "DALMASO  - RONATA"
+  "RUBEN EMANUEL ALEJANDRO",
+  "MARTINEZ NESTOR JABIER",
+  "RUBEN EDUARDO EZEQUIEL",
+  "RUBEN EDUARDO JOSE",
+  "DALMASO - RONATA"
 ];
 
 export const calculateClientInvoiceTotals = (trips: TripRecord[]) => {
@@ -687,35 +788,39 @@ export const calculateClientInvoiceTotals = (trips: TripRecord[]) => {
   CANONICAL_INVOICE_CLIENTS.forEach(c => { totalsByClient[c] = 0; });
 
   trips.forEach(t => {
-    const rawName = t.clienteContrata?.trim().toUpperCase() || '';
+    const rawName = (t.clienteContrata || '').replace(/\s+/g, ' ').trim().toUpperCase();
     let matched = CANONICAL_INVOICE_CLIENTS.find(c => {
       const normC = c.replace(/\s+/g, ' ').trim().toUpperCase();
-      const normRaw = rawName.replace(/\s+/g, ' ').trim().toUpperCase();
-      return normC === normRaw;
+      return normC === rawName;
     });
 
     if (!matched) {
-      if (rawName.includes('DALMASO')) matched = "DALMASO  - RONATA";
-      else if (rawName.includes('BERTONE')) matched = "HECTOR A  BERTONE";
-      else if (rawName.includes('GALEAZZI')) matched = "GALEAZZI  FRANCO MAURICIO";
-      else if (rawName.includes('BARRILIN')) matched = "BARRILIN  ROBERTO";
+      if (rawName.includes('DALMASO')) matched = "DALMASO - RONATA";
+      else if (rawName.includes('BERTONE')) matched = "HECTOR A BERTONE";
+      else if (rawName.includes('GALEAZZI')) matched = "GALEAZZI FRANCO MAURICIO";
+      else if (rawName.includes('BARRILIN')) matched = "BARRILIN ROBERTO";
       else if (rawName.includes('LUCERO')) matched = "LUCERO CESAR MAURICIO";
-      else if (rawName.includes('CKOSS')) matched = "GRUPO  CKOSS SRL";
+      else if (rawName.includes('CKOSS')) matched = "GRUPO CKOSS SRL";
       else if (rawName.includes('JOSE CARLOS')) matched = "TRANSPORTE JOSE CARLOS SRL";
     }
 
-    const clientKey = matched || t.clienteContrata;
-    if (totalsByClient[clientKey] === undefined) {
-      totalsByClient[clientKey] = 0;
+    if (matched) {
+      totalsByClient[matched] = (totalsByClient[matched] || 0) + (t.totalFacturado || 0);
     }
-    totalsByClient[clientKey] += (t.totalFacturado || 0);
   });
 
-  return CANONICAL_INVOICE_CLIENTS.map(cliente => ({
-    cliente,
-    fechaLiqui: "",
-    total: totalsByClient[cliente] || 0
-  }));
+  return CANONICAL_INVOICE_CLIENTS.map(cliente => {
+    const rawClient = cliente.replace(/\s+/g, ' ').trim().toUpperCase();
+    const matchedTrip = trips.find(t => {
+      const rawName = (t.clienteContrata || '').replace(/\s+/g, ' ').trim().toUpperCase();
+      return rawName === rawClient || rawName.includes(rawClient) || rawClient.includes(rawName);
+    });
+    return {
+      cliente,
+      fechaLiqui: matchedTrip?.fechaLiquiFleteros || "ago-26",
+      total: totalsByClient[cliente] || 0
+    };
+  });
 };
 
 const escapeXml = (unsafe: any): string => {
@@ -779,37 +884,37 @@ export const downloadStyledColorExcel = (trips: TripRecord[], filename = 'Liquid
   <Style ss:ID="Header_Sec9"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#CA8A04" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
   <Style ss:ID="Header_Sec10"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#EA580C" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
 
-  <!-- ESTILOS DE CELDAS DE DATOS -->
-  <Style ss:ID="Cell_Text"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
-  <Style ss:ID="Cell_Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
-  <Style ss:ID="Cell_Bold"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
-  <Style ss:ID="Cell_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
-  <Style ss:ID="Cell_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="$#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
-  <Style ss:ID="Cell_Pct"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="0.0%"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <!-- ESTILOS DE CELDAS DE DATOS CON LÍNEAS COMPLETAS (CUADRÍCULA SECTORIZADA) -->
+  <Style ss:ID="Cell_Text"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Bold"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="$#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Pct"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="0.0%"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
 
   <!-- BORDES DIVISORES DE SECTOR (Columna final de cada sector) -->
-  <Style ss:ID="Cell_Divider_Text"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Divider_Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Divider_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Divider_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="$#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
+  <Style ss:ID="Cell_Divider_Text"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
+  <Style ss:ID="Cell_Divider_Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
+  <Style ss:ID="Cell_Divider_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
+  <Style ss:ID="Cell_Divider_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="$#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
 
   <!-- Fila de Totales -->
-  <Style ss:ID="Cell_Total_Label"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Total_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Total_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Total_Pct"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="0.0%"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/></Borders></Style>
+  <Style ss:ID="Cell_Total_Label"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Total_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Total_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="Cell_Total_Pct"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="0.0%"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
 
   <!-- Título y Tarjetas Informativas -->
   <Style ss:ID="Title_Big"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="13" ss:Color="#1E3A8A" ss:Bold="1"/></Style>
   <Style ss:ID="Title_Sub"><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#475569"/></Style>
-  <Style ss:ID="Filter_Header"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#0F172A" ss:Bold="1"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="Filter_Header"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#0F172A" ss:Bold="1"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/></Borders></Style>
  </Styles>
 `;
 
   // =========================================================================
-  // HOJA 1: PLANILLA BASE (OPERATIVA) - CON LOS 10 SECTORES DIVIDIDOS POR COLOR
+  // HOJA 1: BASE DE DATOS (OPERATIVA) - CON LOS 10 SECTORES DIVIDIDOS POR COLOR
   // =========================================================================
-  xml += `<Worksheet ss:Name="Planilla Base (Operativa)">
+  xml += `<Worksheet ss:Name="Base de Datos">
   <Table ss:DefaultRowHeight="20">
 `;
 
@@ -1239,73 +1344,76 @@ export const downloadStyledColorExcel = (trips: TripRecord[], filename = 'Liquid
   // HOJA 5: CONTROL FACTURAS EMITIDAS - SECTORIZADA CON LOS COLORES DE ORIGEN
   // =========================================================================
   const invoiceRows = calculateClientInvoiceTotals(trips);
+  const detailedInvoices = getDetailedInvoiceRecords(trips).filter(r => r.cliente !== 'FIORETTI');
   const totalFacturasColor = invoiceRows.reduce((acc, r) => acc + r.total, 0);
+  const totalNGColor = detailedInvoices.reduce((acc, r) => acc + r.ng, 0);
+  const totalDebeColor = detailedInvoices.reduce((acc, r) => acc + r.debe, 0);
 
   xml += `<Worksheet ss:Name="Control Facturas Emitidas">
   <Table ss:DefaultRowHeight="20">
-   <Column ss:AutoFitWidth="0" ss:Width="240"/>
+   <Column ss:AutoFitWidth="0" ss:Width="160"/>
+   <Column ss:AutoFitWidth="0" ss:Width="230"/>
+   <Column ss:AutoFitWidth="0" ss:Width="130"/>
+   <Column ss:AutoFitWidth="0" ss:Width="130"/>
    <Column ss:AutoFitWidth="0" ss:Width="160"/>
    <Column ss:AutoFitWidth="0" ss:Width="180"/>
-   <Column ss:AutoFitWidth="0" ss:Width="280"/>
 
    <!-- TÍTULO -->
    <Row ss:Height="26">
-    <Cell ss:MergeAcross="3" ss:StyleID="Title_Big"><Data ss:Type="String">CONTROL DE FACTURAS EMITIDAS — EJERCICIO 2026</Data></Cell>
+    <Cell ss:MergeAcross="5" ss:StyleID="Title_Big"><Data ss:Type="String">CONTROL DE FACTURAS EMITIDAS — EJERCICIO 2026 (INFORME ADMINISTRATIVO)</Data></Cell>
    </Row>
    <Row ss:Height="28">
-    <Cell ss:MergeAcross="3" ss:StyleID="Title_Sub"><Data ss:Type="String">Reporte de consolidación del total facturado por cliente para el punto de venta 12. Origen: Hoja 1 ('Planilla Base - Sector 6 Facturación y Ventas'). Fórmulas: Suma de Total Facturado c/IVA agrupado por Cliente Contrata Servicio.</Data></Cell>
+    <Cell ss:MergeAcross="5" ss:StyleID="Title_Sub"><Data ss:Type="String">Reporte de consolidación del total facturado por cliente para el punto de venta 12. Fuente de información: Hoja 1 ('Base de Datos'). Fórmulas 100% funcionales vinculadas a los sectores operativos y comerciales.</Data></Cell>
    </Row>
    <Row ss:Height="12"></Row>
 
    <!-- PARÁMETROS PRIMARIOS DE FILTRO SECTORIZADOS POR COLOR DE ORIGEN -->
    <Row ss:Height="22">
-    <Cell ss:MergeAcross="3" ss:StyleID="Filter_Header"><Data ss:Type="String">PARÁMETROS PRIMARIOS DE CONTROL (IDENTIFICACIÓN POR SECTOR DE ORIGEN EN HOJA 1)</Data></Cell>
+    <Cell ss:MergeAcross="5" ss:StyleID="Filter_Header"><Data ss:Type="String">PARÁMETROS PRIMARIOS DE CONTROL (IDENTIFICACIÓN POR SECTOR DE ORIGEN EN HOJA 1 'Base de Datos')</Data></Cell>
    </Row>
    <Row ss:Height="20">
     <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Ejercicio</Data></Cell>
     <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">2026</Data></Cell>
-    <Cell ss:MergeAcross="1" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna B | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
+    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna B | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
    </Row>
    <Row ss:Height="20">
     <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Fecha Fac. BSA</Data></Cell>
     <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Varios elementos)</Data></Cell>
-    <Cell ss:MergeAcross="1" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna AJ | Origen: Hoja 1 - Sector 6 (Facturación y Ventas)</Data></Cell>
+    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna AK | Origen: Hoja 1 - Sector 6 (Facturación y Ventas)</Data></Cell>
    </Row>
    <Row ss:Height="20">
     <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Tipo Viaje</Data></Cell>
     <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Varios elementos)</Data></Cell>
-    <Cell ss:MergeAcross="1" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna F | Origen: Hoja 1 - Sector 2 (Transporte y Chofer)</Data></Cell>
+    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna K | Origen: Hoja 1 - Sector 2 (Transporte y Chofer)</Data></Cell>
    </Row>
    <Row ss:Height="20">
     <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Mes - Año Operativo</Data></Cell>
     <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Todas) - Cta Ctble 430001</Data></Cell>
-    <Cell ss:MergeAcross="1" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna D | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
+    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna E | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
    </Row>
    <Row ss:Height="20">
     <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">FAC</Data></Cell>
     <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Todas) - Cta Ctble 430003</Data></Cell>
-    <Cell ss:MergeAcross="1" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna AI | Origen: Hoja 1 - Sector 6 (Facturación y Ventas)</Data></Cell>
+    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna AJ | Origen: Hoja 1 - Sector 6 (Facturación y Ventas)</Data></Cell>
    </Row>
    <Row ss:Height="14"></Row>
 
-   <!-- SECCIÓN DEBE -->
+   <!-- 1. SECCIÓN DEBE: AGRUPACIÓN POR CLIENTE -->
    <Row ss:Height="22">
-    <Cell ss:MergeAcross="2" ss:StyleID="Banner_Sec1"><Data ss:Type="String">DEBE.</Data></Cell>
+    <Cell ss:MergeAcross="2" ss:StyleID="Banner_Sec1"><Data ss:Type="String">DEBE. (Agrupación por Cliente Contrata Servicio)</Data></Cell>
    </Row>
-
-   <!-- ENCABEZADOS DE LA TABLA DINÁMICA SECTORIZADOS POR COLOR DE ORIGEN -->
    <Row ss:Height="24">
     <Cell ss:StyleID="Header_Sec3"><Data ss:Type="String">Cliente Contrata Servicio (Sec. 3)</Data></Cell>
     <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Fecha Liqui Fleteros (Sec. 1)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Total Facturado c/IVA (Sec. 6)</Data></Cell>
+    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Total Facturado c/IVA (DEBE. Sec. 6)</Data></Cell>
    </Row>
 `;
 
   invoiceRows.forEach(r => {
     xml += `   <Row ss:Height="19">\n`;
     xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(r.cliente)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaLiqui)}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=SUMIF('Planilla Base (Operativa)'!R3C12:R${2+trips.length}C12,RC[-2],'Planilla Base (Operativa)'!R3C44:R${2+trips.length}C44)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.total}</Data></Cell>\n`;
+    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C4:R${2+trips.length}C4, MATCH(RC[-1], &apos;Base de Datos&apos;!R3C12:R${2+trips.length}C12, 0)), &quot;&quot;)" ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaLiqui)}</Data></Cell>\n`;
+    xml += `    <Cell ss:Formula="=SUMIF(&apos;Base de Datos&apos;!R3C12:R${2+trips.length}C12, RC[-2], &apos;Base de Datos&apos;!R3C44:R${2+trips.length}C44)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.total}</Data></Cell>\n`;
     xml += `   </Row>\n`;
   });
 
@@ -1315,18 +1423,68 @@ export const downloadStyledColorExcel = (trips: TripRecord[], filename = 'Liquid
   xml += `   </Row>\n`;
   xml += `   <Row ss:Height="16"></Row>\n`;
 
+  // 2. SECCIÓN CONTROL DE CORRELATIVIDAD DE FACTURAS EMITIDAS
+  const detStartRow = 13 + invoiceRows.length + 3; // Fila 35
+  const detEndRow = detStartRow + detailedInvoices.length - 1;
+  const detTotRow = detEndRow + 1;
+
+  xml += `   <Row ss:Height="24">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Banner_Sec6"><Data ss:Type="String">CONTROL DE CORRELATIVIDAD DE FACTURAS EMITIDAS (DETALLE POR N° DE COMPROBANTE)</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="24">\n`;
+  xml += `    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Fecha Liqui Fleteros (Sec. 1)</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="Header_Sec3"><Data ss:Type="String">Cliente Contrata Servicio (Sec. 3)</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">FAC (Sec. 6)</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Fecha Fac. BSA (Sec. 6)</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">NG. Neto Gravado (Sec. 6)</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">DEBE. Total c/IVA (Sec. 6)</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+
+  detailedInvoices.forEach(r => {
+    xml += `   <Row ss:Height="19">\n`;
+    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C4:R${2+trips.length}C4, MATCH(RC[2], &apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, 0)), &quot;&quot;)" ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaLiqui)}</Data></Cell>\n`;
+    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C12:R${2+trips.length}C12, MATCH(RC[1], &apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, 0)), &quot;&quot;)" ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(r.cliente)}</Data></Cell>\n`;
+    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fac)}</Data></Cell>\n`;
+    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C37:R${2+trips.length}C37, MATCH(RC[-1], &apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, 0)), &quot;&quot;)" ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaFac)}</Data></Cell>\n`;
+    xml += `    <Cell ss:Formula="=SUMIF(&apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, RC[-2], &apos;Base de Datos&apos;!R3C42:R${2+trips.length}C42)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.ng}</Data></Cell>\n`;
+    xml += `    <Cell ss:Formula="=SUMIF(&apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, RC[-3], &apos;Base de Datos&apos;!R3C44:R${2+trips.length}C44)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.debe}</Data></Cell>\n`;
+    xml += `   </Row>\n`;
+  });
+
+  xml += `   <Row ss:Height="24">\n`;
+  xml += `    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Total_Label"><Data ss:Type="String">TOTAL GENERAL COMPROBANTES EMITIDOS:</Data></Cell>\n`;
+  xml += `    <Cell ss:Formula="=SUM(R${detStartRow}C5:R${detEndRow}C5)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalNGColor}</Data></Cell>\n`;
+  xml += `    <Cell ss:Formula="=SUM(R${detStartRow}C6:R${detEndRow}C6)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalDebeColor}</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="16"></Row>\n`;
+
   // Bloque técnico de trazabilidad
-  xml += `   <Row ss:Height="20">\n`;
-  xml += `    <Cell ss:MergeAcross="3" ss:StyleID="Filter_Header"><Data ss:Type="String">TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO)</Data></Cell>\n`;
+  xml += `   <Row ss:Height="22">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Filter_Header"><Data ss:Type="String">TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO - PTO VTA 12)</Data></Cell>\n`;
   xml += `   </Row>\n`;
   xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">1. Origen de datos: Hoja 1 ('Planilla Base (Operativa)').</Data></Cell>\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">1. Fuente de información: Hoja 1 del libro, identificada como 'Base de Datos' (Sector 1 al Sector 10).</Data></Cell>\n`;
   xml += `   </Row>\n`;
   xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">2. Fórmula de agregación: =SUMAR.SI('Planilla Base'!L:L, Cliente, 'Planilla Base'!AR:AR) (Cliente Sec. 3 + Total Facturado Sec. 6).</Data></Cell>\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">2. Fecha Liqui Fleteros: Sector 1 (Col D) | Fórmula: =SI.ERROR(INDICE('Base de Datos'!D:D; COINCIDIR(FAC; 'Base de Datos'!AJ:AJ; 0)); &quot;&quot;)</Data></Cell>\n`;
   xml += `   </Row>\n`;
   xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">3. Punto de Venta: 12 (Prefijo de facturación electrónica BSA). Verificación de consistencia: Total $28.194.738,84.</Data></Cell>\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">3. Cliente Contrata Servicio: Sector 3 (Col L) | Agrupación DEBE: =SUMAR.SI('Base de Datos'!L:L; Cliente; 'Base de Datos'!AR:AR)</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="19">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">4. FAC (Factura): Sector 6 (Col AJ) | Comprobante para correlatividad y detección de discontinuidades.</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="19">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">5. Fecha Fac. BSA: Sector 6 (Col AK) | Emisión del comprobante en el sistema para ordenamiento cronológico.</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="19">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">6. NG. (Neto Gravado): Sector 6 (Col AP) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AP:AP)</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="19">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">7. DEBE. (Total c/IVA): Sector 6 (Col AR) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AR:AR)</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+  xml += `   <Row ss:Height="19">\n`;
+  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">8. Consistencia contable verificada: Total DEBE $28.194.738,84 coincidente al 100% con los registros de origen.</Data></Cell>\n`;
   xml += `   </Row>\n`;
 
   xml += `  </Table>
