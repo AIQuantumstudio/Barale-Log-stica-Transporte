@@ -20,6 +20,15 @@ import { DocumentControlReport } from './components/DocumentControlReport';
 import { InvoicesControlReport } from './components/InvoicesControlReport';
 import { downloadModernExcel, downloadStyledColorExcel } from './utils/excelExporter';
 import { 
+  DriverMaster, 
+  ClientMaster, 
+  MONTHS_2026, 
+  loadStoredDrivers, 
+  saveStoredDrivers, 
+  loadStoredClients, 
+  saveStoredClients 
+} from './data/masterRecords';
+import { 
   Truck, 
   Plus, 
   Upload, 
@@ -35,7 +44,9 @@ import {
   FileJson,
   CheckCircle2,
   AlertCircle,
-  Receipt
+  Receipt,
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 
 const STORAGE_KEY = 'barale_trips_data_v2';
@@ -56,6 +67,10 @@ export default function App() {
     }
     return INITIAL_TRIPS;
   });
+
+  // Padrón persistente de choferes y clientes
+  const [drivers, setDrivers] = useState<DriverMaster[]>(() => loadStoredDrivers());
+  const [clients, setClients] = useState<ClientMaster[]>(() => loadStoredClients());
 
   const [selectedTrip, setSelectedTrip] = useState<TripRecord | null>(null);
 
@@ -84,28 +99,57 @@ export default function App() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const jsonFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Filters State
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
+  // Filters State (defaulting to all or 'ago-26')
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('ago-26');
   const [transportFilter, setTransportFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<string>('');
 
-  // Extract unique drivers & clients list for selectors
+  // Extract unique drivers & clients list for selectors and compatibility
   const existingDrivers = useMemo(() => {
-    return Array.from(new Set(trips.map(t => t.chofer).filter(Boolean)));
-  }, [trips]);
+    const list = new Set<string>();
+    drivers.forEach(d => list.add(d.name));
+    trips.forEach(t => { if (t.chofer) list.add(t.chofer); });
+    return Array.from(list);
+  }, [drivers, trips]);
 
   const existingClients = useMemo(() => {
-    return Array.from(new Set(trips.map(t => t.clienteContrata).filter(Boolean)));
+    const list = new Set<string>();
+    clients.forEach(c => list.add(c.name));
+    trips.forEach(t => { if (t.clienteContrata) list.add(t.clienteContrata); });
+    return Array.from(list);
+  }, [clients, trips]);
+
+  // Contador de viajes por cada uno de los 12 meses del año 2026
+  const monthCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    MONTHS_2026.forEach(m => { counts[m.id] = 0; });
+    trips.forEach(t => {
+      const key = (t.fechaLiquiFleteros || '').toLowerCase();
+      if (counts[key] !== undefined) {
+        counts[key]++;
+      } else if (t.mes && t.mes >= 1 && t.mes <= 12) {
+        const mDef = MONTHS_2026[t.mes - 1];
+        if (mDef) counts[mDef.id]++;
+      }
+    });
+    return counts;
   }, [trips]);
 
-  // Filtered trips for calculations & tables
+  // Filtered trips for calculations & tables across all 12 months
   const filteredTrips = useMemo(() => {
     return trips.filter(t => {
-      // Period filter
-      if (selectedPeriod === 'ago-26' && t.fechaLiquiFleteros !== 'ago-26') return false;
-      if (selectedPeriod === 'sep-26' && t.fechaLiquiFleteros !== 'sep-26') return false;
+      // Period filter (soporta cualquiera de los 12 meses o todos)
+      if (selectedPeriod !== 'all') {
+        const periodLower = selectedPeriod.toLowerCase();
+        const mDef = MONTHS_2026.find(m => m.id === selectedPeriod);
+        const matchesPeriod = 
+          (t.fechaLiquiFleteros && t.fechaLiquiFleteros.toLowerCase() === periodLower) ||
+          (t.mesAnoOperativo && t.mesAnoOperativo.toLowerCase() === periodLower) ||
+          (mDef && t.mes === mDef.monthNumber);
+        if (!matchesPeriod) return false;
+      }
 
       // Transport filter
       if (transportFilter !== 'all' && t.tipoTransporte !== transportFilter) return false;
@@ -138,106 +182,69 @@ export default function App() {
   // Add operational trip
   const handleAddTrip = (newTrip: TripRecord) => {
     setTrips(prev => [newTrip, ...prev]);
+    setFeedbackMessage(`Viaje ${newTrip.id} registrado correctamente en la Base de Datos.`);
+    setTimeout(() => setFeedbackMessage(null), 3500);
   };
 
-  // Add driver
+  // Add and persist driver
   const handleAddDriver = (driver: { name: string; transporte: string; tipo: 'Propio' | 'Fletero'; codChofer: string }) => {
-    const simulatedTrip: TripRecord = {
-      id: `CHO-${Date.now().toString().slice(-4)}`,
-      ejercicio: 2026,
-      mes: 8,
-      fechaLiquiFleteros: 'ago-26',
-      mesAnoOperativo: 'ago-26',
-      fechaOrdenCarga: new Date().toLocaleDateString('es-AR'),
-      tipoViaje: '1',
-      codChofer: driver.codChofer,
-      tipoTransporte: driver.tipo,
-      transporte: driver.transporte,
-      chofer: driver.name,
-      codCliente: '1001',
-      clienteContrata: 'RONATA',
-      empresaRemitente: 'ABIC',
-      pciaOrigen: 'San Luis',
-      origen: 'Balde',
-      tipoProducto: 'Sal',
-      producto: 'Sal',
-      remitoRemitente: 'Pendiente',
-      remitoJuanMiguel: 'Pendiente',
-      kgsCargados: 33.00,
-      fechaCarga: new Date().toLocaleDateString('es-AR'),
-      clienteDestino: 'RONATA',
-      localidadDestino: 'Rio Tercero',
-      kmPuntoCarga: 0,
-      kmDestino: 0,
-      totalKm: 0,
-      tarifaTnKm: 0,
-      fechaDescarga: new Date().toLocaleDateString('es-AR'),
-      nroProformaOC: '',
-      fechaFactura: 'Pendiente',
-      factura: 'Pendiente',
-      kgsFacturados: 33.00,
-      tarifa: 4254.87,
-      netoGravado: 0,
-      iva: 0,
-      totalFacturado: 0,
-      tnsLiquiFletero: driver.tipo === 'Fletero' ? 33.00 : 0,
-      tarifaFletero: driver.tipo === 'Fletero' ? 2904.03 : 0,
-      costoFletero: 0,
-      margenPesos: 0,
-      margenPct: 0,
-      estadoFacturacion: 'Pendiente'
+    const newDrv: DriverMaster = {
+      id: `DRV-${Date.now().toString().slice(-4)}`,
+      name: driver.name.trim(),
+      transporte: driver.transporte.trim() || (driver.tipo === 'Propio' ? 'JUAN y MIGUEL' : 'Fletero Asignado'),
+      tipo: driver.tipo,
+      codChofer: driver.codChofer.trim() || (driver.tipo === 'Propio' ? '25' : '650')
     };
-    setTrips(prev => [simulatedTrip, ...prev]);
+
+    setDrivers(prev => {
+      const updated = [newDrv, ...prev.filter(d => d.name.toUpperCase() !== newDrv.name.toUpperCase())];
+      saveStoredDrivers(updated);
+      return updated;
+    });
+
+    setFeedbackMessage(`Chofer "${driver.name}" guardado en el padrón desplegable.`);
+    setTimeout(() => setFeedbackMessage(null), 3500);
   };
 
-  // Add client
+  // Delete driver from master list
+  const handleDeleteDriver = (driverIdOrName: string) => {
+    setDrivers(prev => {
+      const updated = prev.filter(d => d.id !== driverIdOrName && d.name !== driverIdOrName);
+      saveStoredDrivers(updated);
+      return updated;
+    });
+    setFeedbackMessage(`Chofer eliminado del padrón.`);
+    setTimeout(() => setFeedbackMessage(null), 3000);
+  };
+
+  // Add and persist client
   const handleAddClient = (client: { name: string; codCliente: string; empresaRemitente: string }) => {
-    const simulatedTrip: TripRecord = {
-      id: `CTE-${Date.now().toString().slice(-4)}`,
-      ejercicio: 2026,
-      mes: 8,
-      fechaLiquiFleteros: 'ago-26',
-      mesAnoOperativo: 'ago-26',
-      fechaOrdenCarga: new Date().toLocaleDateString('es-AR'),
-      tipoViaje: '1',
-      codChofer: '10',
-      tipoTransporte: 'Propio',
-      transporte: 'JUAN y MIGUEL',
-      chofer: 'Ruben Martin',
-      codCliente: client.codCliente,
-      clienteContrata: client.name,
-      empresaRemitente: client.empresaRemitente,
-      pciaOrigen: 'Cordoba',
-      origen: 'Rio Cuarto',
-      tipoProducto: 'Cereales',
-      producto: 'Maiz',
-      remitoRemitente: 'Pendiente',
-      remitoJuanMiguel: 'Pendiente',
-      kgsCargados: 32.00,
-      fechaCarga: new Date().toLocaleDateString('es-AR'),
-      clienteDestino: client.name,
-      localidadDestino: 'San Luis',
-      kmPuntoCarga: 0,
-      kmDestino: 0,
-      totalKm: 0,
-      tarifaTnKm: 0,
-      fechaDescarga: new Date().toLocaleDateString('es-AR'),
-      nroProformaOC: '',
-      fechaFactura: 'Pendiente',
-      factura: 'Pendiente',
-      kgsFacturados: 32.00,
-      tarifa: 4100.00,
-      netoGravado: 0,
-      iva: 0,
-      totalFacturado: 0,
-      tnsLiquiFletero: 0,
-      tarifaFletero: 0,
-      costoFletero: 0,
-      margenPesos: 0,
-      margenPct: 0,
-      estadoFacturacion: 'Pendiente'
+    const newCli: ClientMaster = {
+      id: `CLI-${Date.now().toString().slice(-4)}`,
+      name: client.name.trim().toUpperCase(),
+      codCliente: client.codCliente.trim() || '1800',
+      empresaRemitente: client.empresaRemitente.trim() || client.name.trim().toUpperCase()
     };
-    setTrips(prev => [simulatedTrip, ...prev]);
+
+    setClients(prev => {
+      const updated = [newCli, ...prev.filter(c => c.name.toUpperCase() !== newCli.name.toUpperCase())];
+      saveStoredClients(updated);
+      return updated;
+    });
+
+    setFeedbackMessage(`Cliente "${client.name}" guardado en el padrón desplegable.`);
+    setTimeout(() => setFeedbackMessage(null), 3500);
+  };
+
+  // Delete client from master list
+  const handleDeleteClient = (clientIdOrName: string) => {
+    setClients(prev => {
+      const updated = prev.filter(c => c.id !== clientIdOrName && c.name !== clientIdOrName);
+      saveStoredClients(updated);
+      return updated;
+    });
+    setFeedbackMessage(`Cliente eliminado del padrón.`);
+    setTimeout(() => setFeedbackMessage(null), 3000);
   };
 
   // Import trips from CSV/Excel
@@ -378,9 +385,9 @@ export default function App() {
         <div className="flex items-center gap-2">
           {/* DESCARGA EXCEL COMPLETO CON SECTORES POR COLOR EN TODAS LAS HOJAS */}
           <button
-            onClick={() => downloadStyledColorExcel(filteredTrips, `Liquidacion_Barale_Sectores_Colores_${new Date().toISOString().slice(0, 10)}.xls`)}
+            onClick={() => downloadStyledColorExcel(filteredTrips, `Liquidacion_Barale_Sectores_Colores_${new Date().toISOString().slice(0, 10)}.xlsx`)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors cursor-pointer shadow-sm"
-            title="Descargar Planilla Base al 100% y todas las hojas sectorizadas por color"
+            title="Descargar Planilla Base al 100% y todas las hojas sectorizadas por color con fórmulas 100% funcionales"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Descargar Excel (Sectores por Color)</span>
@@ -528,32 +535,24 @@ export default function App() {
               <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
             </span>
 
-            {/* Período */}
-            <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700/80">
-              <button
-                onClick={() => setSelectedPeriod('all')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                  selectedPeriod === 'all' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
-                }`}
+            {/* Selector de Período: 12 Meses del Año 2026 + Año Completo */}
+            <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg p-1 border border-slate-700/80">
+              <Calendar className="w-3.5 h-3.5 text-blue-400 shrink-0 ml-1" />
+              <select
+                value={selectedPeriod}
+                onChange={(e) => setSelectedPeriod(e.target.value)}
+                className="bg-transparent text-white font-semibold text-xs focus:outline-none cursor-pointer pr-1"
+                title="Seleccionar mes de la Base de Datos anual"
               >
-                Todos
-              </button>
-              <button
-                onClick={() => setSelectedPeriod('ago-26')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                  selectedPeriod === 'ago-26' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Ago-26
-              </button>
-              <button
-                onClick={() => setSelectedPeriod('sep-26')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                  selectedPeriod === 'sep-26' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Sep-26
-              </button>
+                <option value="all" className="bg-slate-900 text-white">
+                  📅 Todos los Meses (Año 2026 Completo) — ({trips.length} viajes)
+                </option>
+                {MONTHS_2026.map(m => (
+                  <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                    {m.name} 2026 ({m.shortTag}) — ({monthCounts[m.id] || 0} viajes)
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Modalidad */}
@@ -714,10 +713,12 @@ export default function App() {
         {activeTab === 'choferes' && (
           <DriverPerformance 
             trips={filteredTrips}
+            drivers={drivers}
             onSelectDriverTrips={() => {
               setActiveTab('viajes');
             }}
             onOpenNewDriver={() => setIsNewDriverOpen(true)}
+            onDeleteDriver={handleDeleteDriver}
           />
         )}
       </main>
@@ -807,8 +808,13 @@ export default function App() {
         isOpen={isNewTripOpen}
         onClose={() => setIsNewTripOpen(false)}
         onAddTrip={handleAddTrip}
-        existingDrivers={existingDrivers}
-        existingClients={existingClients}
+        drivers={drivers}
+        clients={clients}
+        onAddDriver={handleAddDriver}
+        onDeleteDriver={handleDeleteDriver}
+        onAddClient={handleAddClient}
+        onDeleteClient={handleDeleteClient}
+        selectedPeriod={selectedPeriod}
       />
 
       <NewDriverModal

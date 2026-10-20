@@ -1,24 +1,29 @@
 import React, { useState } from 'react';
 import { TripRecord } from '../types/logistics';
+import { DriverMaster } from '../data/masterRecords';
 import { formatCurrency, formatNumber } from '../utils/formatters';
-import { User, Award, ArrowUpRight, Plus, Download } from 'lucide-react';
+import { User, Award, ArrowUpRight, Plus, Download, Trash2 } from 'lucide-react';
 import { downloadModernExcel } from '../utils/excelExporter';
 
 interface DriverPerformanceProps {
   trips: TripRecord[];
+  drivers?: DriverMaster[];
   onSelectDriverTrips: (driverName: string) => void;
   onOpenNewDriver?: () => void;
+  onDeleteDriver?: (driverIdOrName: string) => void;
 }
 
 export const DriverPerformance: React.FC<DriverPerformanceProps> = ({ 
   trips,
+  drivers = [],
   onSelectDriverTrips,
-  onOpenNewDriver
+  onOpenNewDriver,
+  onDeleteDriver
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'Propio' | 'Fletero'>('all');
 
-  // Group by driver
-  const driverStats = trips.reduce((acc, t) => {
+  // Compute stats from active trips
+  const tripStatsMap = trips.reduce((acc, t) => {
     const driver = t.chofer || 'Sin Chofer';
     if (!acc[driver]) {
       acc[driver] = {
@@ -49,9 +54,62 @@ export const DriverPerformance: React.FC<DriverPerformanceProps> = ({
     margen: number;
   }>);
 
-  const driverList = Object.values(driverStats)
+  // Merge registered drivers from master list + any drivers from trips
+  const mergedMap: Record<string, {
+    id?: string;
+    name: string;
+    transporte: string;
+    tipo: 'Propio' | 'Fletero';
+    viajes: number;
+    toneladas: number;
+    facturado: number;
+    costo: number;
+    margen: number;
+  }> = {};
+
+  // First seed from drivers master
+  drivers.forEach(d => {
+    mergedMap[d.name] = {
+      id: d.id,
+      name: d.name,
+      transporte: d.transporte,
+      tipo: d.tipo,
+      viajes: 0,
+      toneladas: 0,
+      facturado: 0,
+      costo: 0,
+      margen: 0
+    };
+  });
+
+  // Then add trip stats
+  Object.values(tripStatsMap).forEach(ts => {
+    if (mergedMap[ts.name]) {
+      mergedMap[ts.name].viajes = ts.viajes;
+      mergedMap[ts.name].toneladas = ts.toneladas;
+      mergedMap[ts.name].facturado = ts.facturado;
+      mergedMap[ts.name].costo = ts.costo;
+      mergedMap[ts.name].margen = ts.margen;
+    } else {
+      mergedMap[ts.name] = {
+        name: ts.name,
+        transporte: ts.transporte,
+        tipo: ts.tipo,
+        viajes: ts.viajes,
+        toneladas: ts.toneladas,
+        facturado: ts.facturado,
+        costo: ts.costo,
+        margen: ts.margen
+      };
+    }
+  });
+
+  const driverList = Object.values(mergedMap)
     .filter(d => filterType === 'all' || d.tipo === filterType)
-    .sort((a, b) => b.margen - a.margen);
+    .sort((a, b) => {
+      if (b.viajes !== a.viajes) return b.viajes - a.viajes;
+      return b.margen - a.margen;
+    });
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm text-white">
@@ -60,11 +118,11 @@ export const DriverPerformance: React.FC<DriverPerformanceProps> = ({
           <div className="flex items-center gap-2">
             <Award className="w-4 h-4 text-amber-400" />
             <h3 className="text-sm font-semibold tracking-wide text-slate-100">
-              Sector: Liquidación de Choferes & Fleteros
+              Padrón y Liquidación de Choferes & Fleteros
             </h3>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Volumen, facturación y margen aportado por conductor
+            Conductores guardados, viajes realizados, facturación y margen
           </p>
         </div>
 
@@ -96,7 +154,7 @@ export const DriverPerformance: React.FC<DriverPerformanceProps> = ({
               onClick={() => setFilterType('all')}
               className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${filterType === 'all' ? 'bg-slate-700 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
             >
-              Todos
+              Todos ({driverList.length})
             </button>
             <button
               onClick={() => setFilterType('Propio')}
@@ -125,7 +183,7 @@ export const DriverPerformance: React.FC<DriverPerformanceProps> = ({
               <th className="pb-3 px-3 text-right">Venta Total (NG)</th>
               <th className="pb-3 px-3 text-right">Costo Flete Pagado</th>
               <th className="pb-3 px-3 text-right">Margen Neto Barale</th>
-              <th className="pb-3 px-3 text-center">Acción</th>
+              <th className="pb-3 px-3 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/80 text-slate-300">
@@ -169,13 +227,32 @@ export const DriverPerformance: React.FC<DriverPerformanceProps> = ({
                     {formatCurrency(driver.margen)}
                   </td>
                   <td className="py-2.5 px-3 text-center">
-                    <button
-                      onClick={() => onSelectDriverTrips(driver.name)}
-                      className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 font-medium underline cursor-pointer"
-                    >
-                      <span>Ver viajes</span>
-                      <ArrowUpRight className="w-3 h-3" />
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      {driver.viajes > 0 && (
+                        <button
+                          onClick={() => onSelectDriverTrips(driver.name)}
+                          className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 font-medium underline cursor-pointer"
+                          title="Ver viajes de este chofer"
+                        >
+                          <span>Viajes</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {onDeleteDriver && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`¿Deseas eliminar al chofer "${driver.name}" del padrón guardado?`)) {
+                              onDeleteDriver(driver.id || driver.name);
+                            }
+                          }}
+                          className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors cursor-pointer"
+                          title={`Eliminar ${driver.name} del padrón`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

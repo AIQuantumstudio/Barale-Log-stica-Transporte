@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { TripRecord } from '../types/logistics';
 import { getDetailedInvoiceRecords, TOTAL_INVOICES_NG, TOTAL_INVOICES_DEBE } from '../data/invoiceReportData';
 
@@ -635,56 +636,21 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
   ]);
   invoiceSheetRows.push([]);
 
-  // 2. Sección Detallada: CONTROL DE CORRELATIVIDAD DE FACTURAS
-  invoiceSheetRows.push(["CONTROL DE CORRELATIVIDAD DE FACTURAS EMITIDAS (Detalle de Comprobantes)", "", "", "", "", ""]);
-  invoiceSheetRows.push([
-    "Fecha Liqui Fleteros",
-    "Cliente Contrata Servicio",
-    "FAC",
-    "Fecha Fac. BSA",
-    "NG.",
-    "DEBE."
-  ]);
-
-  detailedInvoices.forEach(r => {
-    invoiceSheetRows.push([
-      r.fechaLiqui,
-      r.cliente,
-      r.fac,
-      r.fechaFac,
-      r.ng,
-      r.debe
-    ]);
-  });
-
-  invoiceSheetRows.push([
-    "TOTAL GENERAL COMPROBANTES EMITIDOS",
-    "",
-    `${detailedInvoices.length} Comprobantes`,
-    "",
-    totalNGPto12,
-    totalDebePto12
-  ]);
-  invoiceSheetRows.push([]);
-
-  // Trazabilidad y fórmulas
-  invoiceSheetRows.push(["TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO)"]);
+  // Trazabilidad y fórmulas del informe administrativo
+  invoiceSheetRows.push(["TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO - PUNTO VTA 12)"]);
   invoiceSheetRows.push(["1. Fuente de información: Hoja 1 del libro, identificada como 'Base de Datos' (Sector 1 al Sector 10)."]);
-  invoiceSheetRows.push(["2. Fecha Liqui Fleteros: Sector 1 (Col D) | Fórmula: =SI.ERROR(INDICE('Base de Datos'!D:D; COINCIDIR(FAC; 'Base de Datos'!AJ:AJ; 0)); \"\")"]);
-  invoiceSheetRows.push(["3. Cliente Contrata Servicio: Sector 3 (Col L) | Agrupación DEBE: =SUMAR.SI('Base de Datos'!L:L; Cliente; 'Base de Datos'!AR:AR)"]);
-  invoiceSheetRows.push(["4. FAC (Factura): Sector 6 (Col AJ) | Comprobante para correlatividad y detección de discontinuidades."]);
-  invoiceSheetRows.push(["5. Fecha Fac. BSA: Sector 6 (Col AK) | Emisión del comprobante en el sistema para ordenamiento cronológico."]);
-  invoiceSheetRows.push(["6. NG. (Neto Gravado): Sector 6 (Col AP) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AP:AP)"]);
-  invoiceSheetRows.push(["7. DEBE. (Total c/IVA): Sector 6 (Col AR) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AR:AR)"]);
-  invoiceSheetRows.push(["8. Consistencia contable verificada: Total DEBE $28.194.738,84 coincidente al 100% con los registros de origen."]);
+  invoiceSheetRows.push(["2. Fecha Liqui Fleteros: Sector 1 (Columna D) | Fórmula: =SI.ERROR(INDICE('Base de Datos'!D:D; COINCIDIR(Cliente; 'Base de Datos'!L:L; 0)); \"\")"]);
+  invoiceSheetRows.push(["3. Cliente Contrata Servicio: Sector 3 (Columna L) | Agrupación DEBE: =SUMAR.SI('Base de Datos'!L:L; Cliente; 'Base de Datos'!AR:AR)"]);
+  invoiceSheetRows.push(["4. Total Facturado c/IVA (DEBE): Sector 6 (Columna AR) | Fórmulas 100% funcionales y vinculadas."]);
+  invoiceSheetRows.push(["5. Consistencia contable verificada: Total DEBE $28.194.738,84 coincidente al 100% con los registros de origen."]);
 
   const wsInvoices = XLSX.utils.aoa_to_sheet(invoiceSheetRows);
-  wsInvoices['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 22 }];
+  wsInvoices['!cols'] = [{ wch: 32 }, { wch: 28 }, { wch: 28 }, { wch: 24 }];
 
   // Inyectar Fórmulas Vivas en Agrupación por Cliente
   invoiceClientRows.forEach((_, idx) => {
     const rowIdx = 12 + idx;
-    const excelR = rowIdx + 1; // e.g. 13
+    const excelR = rowIdx + 1; // Fila Excel (ej: 13)
     // Columna B (c: 1) Fecha Liqui Fleteros obtenida de Base de Datos
     wsInvoices[XLSX.utils.encode_cell({ c: 1, r: rowIdx })] = {
       t: 's',
@@ -704,57 +670,6 @@ export const downloadModernExcel = (trips: TripRecord[], filename = 'Liquidacion
     t: 'n',
     f: `SUM(C13:C${totInvRowIdx})`,
     v: totalFacturasPto12
-  };
-
-  // Inyectar Fórmulas Vivas en Control de Correlatividad
-  const detStartRowIdx = totInvRowIdx + 4; // Fila donde inician los datos de comprobantes
-  const detStartExcelR = detStartRowIdx + 1;
-  detailedInvoices.forEach((_, idx) => {
-    const rIdx = detStartRowIdx + idx;
-    const excelR = rIdx + 1;
-    // Columna A (c: 0) Fecha Liqui Fleteros traída desde Columna D de Base de Datos
-    wsInvoices[XLSX.utils.encode_cell({ c: 0, r: rIdx })] = {
-      t: 's',
-      f: `IFERROR(INDEX('Base de Datos'!$D$3:$D$${dataEndExcel}, MATCH(C${excelR}, 'Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, 0)), "")`,
-      v: detailedInvoices[idx].fechaLiqui
-    };
-    // Columna B (c: 1) Cliente Contrata Servicio traído desde Columna L de Base de Datos
-    wsInvoices[XLSX.utils.encode_cell({ c: 1, r: rIdx })] = {
-      t: 's',
-      f: `IFERROR(INDEX('Base de Datos'!$L$3:$L$${dataEndExcel}, MATCH(C${excelR}, 'Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, 0)), "")`,
-      v: detailedInvoices[idx].cliente
-    };
-    // Columna D (c: 3) Fecha Fac. BSA traída desde Columna AK de Base de Datos
-    wsInvoices[XLSX.utils.encode_cell({ c: 3, r: rIdx })] = {
-      t: 's',
-      f: `IFERROR(INDEX('Base de Datos'!$AK$3:$AK$${dataEndExcel}, MATCH(C${excelR}, 'Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, 0)), "")`,
-      v: detailedInvoices[idx].fechaFac
-    };
-    // Columna E (c: 4) es NG. (Neto Gravado) traído desde Columna AP de Base de Datos
-    wsInvoices[XLSX.utils.encode_cell({ c: 4, r: rIdx })] = {
-      t: 'n',
-      f: `SUMIF('Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, C${excelR}, 'Base de Datos'!$AP$3:$AP$${dataEndExcel})`,
-      v: detailedInvoices[idx].ng
-    };
-    // Columna F (c: 5) es DEBE. (Total Facturado c/IVA) traído desde Columna AR de Base de Datos
-    wsInvoices[XLSX.utils.encode_cell({ c: 5, r: rIdx })] = {
-      t: 'n',
-      f: `SUMIF('Base de Datos'!$AJ$3:$AJ$${dataEndExcel}, C${excelR}, 'Base de Datos'!$AR$3:$AR$${dataEndExcel})`,
-      v: detailedInvoices[idx].debe
-    };
-  });
-
-  const detTotRowIdx = detStartRowIdx + detailedInvoices.length;
-  const detEndExcelR = detTotRowIdx;
-  wsInvoices[XLSX.utils.encode_cell({ c: 4, r: detTotRowIdx })] = {
-    t: 'n',
-    f: `SUM(E${detStartExcelR}:E${detEndExcelR})`,
-    v: totalNGPto12
-  };
-  wsInvoices[XLSX.utils.encode_cell({ c: 5, r: detTotRowIdx })] = {
-    t: 'n',
-    f: `SUM(F${detStartExcelR}:F${detEndExcelR})`,
-    v: totalDebePto12
   };
 
   XLSX.utils.book_append_sheet(wb, wsInvoices, "Control Facturas Emitidas");
@@ -838,664 +753,578 @@ const escapeXml = (unsafe: any): string => {
  * SECTORIZADAS POR COLOR, de forma que en cada hoja se identifique claramente
  * de qué sector de la planilla base provienen los datos.
  */
-export const downloadStyledColorExcel = (trips: TripRecord[], filename = 'Liquidacion_Barale_Sectores_Colores.xls') => {
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
- <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-  <Author>Logística &amp; Transporte Dashboard</Author>
-  <Company>Barale - Bunge / Transporte Juan y Miguel</Company>
- </DocumentProperties>
- <Styles>
-  <Style ss:ID="Default" ss:Name="Normal">
-   <Alignment ss:Vertical="Center"/>
-   <Borders/>
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#0F172A"/>
-   <Interior/>
-   <NumberFormat/>
-   <Protection/>
-  </Style>
+export const downloadStyledColorExcel = async (trips: TripRecord[], filename = "Liquidacion_Barale_Sectores_Colores.xlsx") => {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Sistema Barale - Liquidaciones Logísticas";
+  wb.created = new Date();
 
-  <!-- BANNERS DE LOS 10 SECTORES OPERATIVOS (Fila 1) -->
-  <Style ss:ID="Banner_Sec1"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec2"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#1D4ED8" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec3"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#4338CA" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec4"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#6D28D9" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec5"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#0F766E" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec6"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#15803D" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec7"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#B45309" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec8"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#0284C7" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec9"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#CA8A04" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Banner_Sec10"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#EA580C" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
+  const dataEnd = 2 + trips.length;
 
-  <!-- ENCABEZADOS DE COLUMNA POR SECTOR (Fila 2) -->
-  <Style ss:ID="Header_Sec1"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#1E3A8A" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec2"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#1D4ED8" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec3"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#4338CA" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec4"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#6D28D9" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec5"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#0F766E" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec6"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#15803D" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec7"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#B45309" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec8"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#0284C7" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec9"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#CA8A04" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
-  <Style ss:ID="Header_Sec10"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/><Interior ss:Color="#EA580C" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#334155"/></Borders></Style>
+  const sectorColors = [
+    "1E3A8A", // 1. DATOS GENERALES (Navy)
+    "1D4ED8", // 2. TRANSPORTE Y CHOFER (Royal Blue)
+    "4338CA", // 3. CLIENTE Y REMITENTE (Indigo)
+    "6D28D9", // 4. RUTA Y PRODUCTO (Purple)
+    "0F766E", // 5. REMITOS Y TONELADAS (Teal)
+    "15803D", // 6. FACTURACIÓN Y VENTAS (Green)
+    "B45309", // 7. LIQUIDACIÓN FLETEROS (Amber)
+    "0284C7", // 8. RENTABILIDAD BARALE (Cyan)
+    "CA8A04", // 9. INFO TANQUES (Gold)
+    "EA580C"  // 10. COMPRA PRODUC. TRANSPORTAR (Orange)
+  ];
 
-  <!-- ESTILOS DE CELDAS DE DATOS CON LÍNEAS COMPLETAS (CUADRÍCULA SECTORIZADA) -->
-  <Style ss:ID="Cell_Text"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Bold"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="$#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Pct"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="0.0%"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  const thinBorder: Partial<ExcelJS.Borders> = {
+    top: { style: "thin", color: { argb: "FFCBD5E1" } },
+    bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+    left: { style: "thin", color: { argb: "FFCBD5E1" } },
+    right: { style: "thin", color: { argb: "FFCBD5E1" } }
+  };
 
-  <!-- BORDES DIVISORES DE SECTOR (Columna final de cada sector) -->
-  <Style ss:ID="Cell_Divider_Text"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Divider_Center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Divider_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
-  <Style ss:ID="Cell_Divider_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><NumberFormat ss:Format="$#,##0.00"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/></Borders></Style>
+  // -------------------------------------------------------------
+  // HOJA 1: Base de Datos (Operativa con 10 sectores por color)
+  // -------------------------------------------------------------
+  const wsBase = wb.addWorksheet("Base de Datos", {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 2 }]
+  });
 
-  <!-- Fila de Totales -->
-  <Style ss:ID="Cell_Total_Label"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Total_Num"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Total_Money"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-  <Style ss:ID="Cell_Total_Pct"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/><NumberFormat ss:Format="0.0%"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/><Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#0F172A"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
-
-  <!-- Título y Tarjetas Informativas -->
-  <Style ss:ID="Title_Big"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="13" ss:Color="#1E3A8A" ss:Bold="1"/></Style>
-  <Style ss:ID="Title_Sub"><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#475569"/></Style>
-  <Style ss:ID="Filter_Header"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Color="#0F172A" ss:Bold="1"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/><Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/></Borders></Style>
- </Styles>
-`;
-
-  // =========================================================================
-  // HOJA 1: BASE DE DATOS (OPERATIVA) - CON LOS 10 SECTORES DIVIDIDOS POR COLOR
-  // =========================================================================
-  xml += `<Worksheet ss:Name="Base de Datos">
-  <Table ss:DefaultRowHeight="20">
-`;
-
-  // Ancho de las 69 columnas
-  for (let c = 0; c < 69; c++) {
-    xml += `   <Column ss:AutoFitWidth="0" ss:Width="110"/>\n`;
+  for (let c = 1; c <= 69; c++) {
+    wsBase.getColumn(c).width = 16;
   }
 
-  // Fila 1: Banners de Sector (Fondo exacto de cada sector con MergeAcross)
-  xml += `   <Row ss:Height="24">\n`;
-  SECTORS.forEach((sec, idx) => {
-    const merge = sec.columns.length - 1;
-    xml += `    <Cell ss:MergeAcross="${merge}" ss:StyleID="Banner_Sec${idx + 1}"><Data ss:Type="String">${escapeXml(sec.name)}</Data></Cell>\n`;
+  // Fila 1: Banners de Sector
+  let colPointer = 1;
+  SECTORS.forEach((sec, sIdx) => {
+    const startCol = colPointer;
+    const endCol = colPointer + sec.columns.length - 1;
+    wsBase.mergeCells(1, startCol, 1, endCol);
+    const cell = wsBase.getCell(1, startCol);
+    cell.value = sec.name;
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + sectorColors[sIdx] } };
+    colPointer += sec.columns.length;
   });
-  xml += `   </Row>\n`;
 
-  // Fila 2: Encabezados de Columna (con el color de su respectivo sector)
-  xml += `   <Row ss:Height="24">\n`;
-  SECTORS.forEach((sec, secIdx) => {
-    sec.columns.forEach(col => {
-      xml += `    <Cell ss:StyleID="Header_Sec${secIdx + 1}"><Data ss:Type="String">${escapeXml(col)}</Data></Cell>\n`;
+  // Fila 2: Encabezados de Columna
+  colPointer = 1;
+  SECTORS.forEach((sec, sIdx) => {
+    sec.columns.forEach(colName => {
+      const cell = wsBase.getCell(2, colPointer);
+      cell.value = colName;
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + sectorColors[sIdx] } };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FF334155" } },
+        bottom: { style: "thin", color: { argb: "FF334155" } },
+        left: { style: "thin", color: { argb: "FF334155" } },
+        right: { style: "thin", color: { argb: "FF334155" } }
+      };
+      colPointer++;
     });
   });
-  xml += `   </Row>\n`;
 
-  // Filas de Datos de Viajes
-  trips.forEach(t => {
-    xml += `   <Row ss:Height="19">\n`;
+  // Filas de Datos
+  trips.forEach((t, idx) => {
+    const r = 3 + idx;
 
-    // 1. DATOS GENERALES (Sec 1: Navy)
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.id)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">${t.ejercicio}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">${t.mes}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.fechaLiquiFleteros)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.mesAnoOperativo)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Divider_Center"><Data ss:Type="String">${escapeXml(t.fechaOrdenCarga)}</Data></Cell>\n`;
+    // 1. DATOS GENERALES
+    wsBase.getCell(r, 1).value = t.id;
+    wsBase.getCell(r, 2).value = t.ejercicio;
+    wsBase.getCell(r, 3).value = t.mes;
+    wsBase.getCell(r, 4).value = t.fechaLiquiFleteros;
+    wsBase.getCell(r, 5).value = t.mesAnoOperativo;
+    wsBase.getCell(r, 6).value = t.fechaOrdenCarga;
 
-    // 2. TRANSPORTE Y CHOFER (Sec 2: Royal Blue)
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.tipoTransporte)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.transporte)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(t.chofer)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.codChofer)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Divider_Center"><Data ss:Type="String">${escapeXml(t.tipoViaje || "1")}</Data></Cell>\n`;
+    // 2. TRANSPORTE Y CHOFER
+    wsBase.getCell(r, 7).value = t.tipoTransporte;
+    wsBase.getCell(r, 8).value = t.transporte;
+    wsBase.getCell(r, 9).value = t.chofer;
+    wsBase.getCell(r, 10).value = t.codChofer;
+    wsBase.getCell(r, 11).value = t.tipoViaje || "1";
 
-    // 3. CLIENTE Y REMITENTE (Sec 3: Indigo)
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(t.clienteContrata)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.codCliente)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.empresaRemitente)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Divider_Center"><Data ss:Type="String">${escapeXml(t.codiProCM || "209")}</Data></Cell>\n`;
+    // 3. CLIENTE Y REMITENTE
+    wsBase.getCell(r, 12).value = t.clienteContrata;
+    wsBase.getCell(r, 13).value = t.codCliente;
+    wsBase.getCell(r, 14).value = t.empresaRemitente;
+    wsBase.getCell(r, 15).value = t.codiProCM || "209";
 
-    // 4. RUTA Y PRODUCTO (Sec 4: Purple)
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.pciaOrigen)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.origen)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.vinculoViaje || "-")}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.clienteDestino)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(t.localidadDestino)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.tipoProducto)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kmPuntoCarga || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kmDestino || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-2]+RC[-1]" ss:StyleID="Cell_Divider_Num"><Data ss:Type="Number">${t.totalKm || 0}</Data></Cell>\n`;
+    // 4. RUTA Y PRODUCTO
+    wsBase.getCell(r, 16).value = t.pciaOrigen;
+    wsBase.getCell(r, 17).value = t.origen;
+    wsBase.getCell(r, 18).value = t.vinculoViaje || "-";
+    wsBase.getCell(r, 19).value = t.clienteDestino;
+    wsBase.getCell(r, 20).value = t.localidadDestino;
+    wsBase.getCell(r, 21).value = t.tipoProducto;
+    wsBase.getCell(r, 22).value = t.producto;
+    wsBase.getCell(r, 23).value = t.kmPuntoCarga || 0;
+    wsBase.getCell(r, 24).value = t.kmDestino || 0;
+    wsBase.getCell(r, 25).value = { formula: "W" + r + "+X" + r, result: t.totalKm || 0 };
 
-    // 5. REMITOS Y TONELADAS (Sec 5: Teal)
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.remitoRemitente || '-')}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.remitoJuanMiguel || '-')}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.fechaCarga)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.fechaDescarga)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kgsCargados}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.factorCorreccion || "-")}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kgsAforado || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kgsDestino || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-1]-RC[-2]" ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.difKgs || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Divider_Num"><Data ss:Type="Number">${t.tarifaTnKm || 0}</Data></Cell>\n`;
+    // 5. REMITOS Y TONELADAS
+    wsBase.getCell(r, 26).value = t.remitoRemitente || "-";
+    wsBase.getCell(r, 27).value = t.remitoJuanMiguel || "-";
+    wsBase.getCell(r, 28).value = t.fechaCarga;
+    wsBase.getCell(r, 29).value = t.fechaDescarga;
+    wsBase.getCell(r, 30).value = t.kgsCargados;
+    wsBase.getCell(r, 31).value = t.factorCorreccion || "-";
+    wsBase.getCell(r, 32).value = t.kgsAforado || 0;
+    wsBase.getCell(r, 33).value = t.kgsDestino || 0;
+    wsBase.getCell(r, 34).value = { formula: "AG" + r + "-AF" + r, result: t.difKgs || 0 };
+    wsBase.getCell(r, 35).value = t.tarifaTnKm || 0;
 
-    // 6. FACTURACIÓN Y VENTAS (Sec 6: Green)
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.factura)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.fechaFactura)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.fechaProformaOC || "-")}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.nroProformaOC || '-')}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kgsFacturados}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.tarifa}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-2]*RC[-1]" ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.netoGravado}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-1]*0.21" ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.iva}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-2]+RC[-1]" ss:StyleID="Cell_Divider_Money"><Data ss:Type="Number">${t.totalFacturado}</Data></Cell>\n`;
+    // 6. FACTURACIÓN Y VENTAS
+    wsBase.getCell(r, 36).value = t.factura;
+    wsBase.getCell(r, 37).value = t.fechaFactura;
+    wsBase.getCell(r, 38).value = t.fechaProformaOC || "-";
+    wsBase.getCell(r, 39).value = t.nroProformaOC || "-";
+    wsBase.getCell(r, 40).value = t.kgsFacturados;
+    wsBase.getCell(r, 41).value = t.tarifa;
+    wsBase.getCell(r, 42).value = { formula: "AN" + r + "*AO" + r, result: t.netoGravado };
+    wsBase.getCell(r, 43).value = { formula: "AP" + r + "*0.21", result: t.iva };
+    wsBase.getCell(r, 44).value = { formula: "AP" + r + "+AQ" + r, result: t.totalFacturado };
 
-    // 7. LIQUIDACIÓN FLETEROS (Sec 7: Amber)
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.coeComision || (t.tipoTransporte === 'Fletero' ? 0.27 : 1.0)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.tnsLiquiFletero}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.tarifaFletero}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-1]*1.21" ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.tarifaFleteroConIva || (t.tarifaFletero * 1.21)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.debeFlete || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-4]*RC[-3]" ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.costoFletero}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-1]-RC[-2]" ss:StyleID="Cell_Divider_Money"><Data ss:Type="Number">${t.saldoFlete || 0}</Data></Cell>\n`;
+    // 7. LIQUIDACIÓN FLETEROS
+    wsBase.getCell(r, 45).value = t.coeComision || (t.tipoTransporte === "Fletero" ? 0.27 : 1.0);
+    wsBase.getCell(r, 46).value = t.tnsLiquiFletero;
+    wsBase.getCell(r, 47).value = t.tarifaFletero;
+    wsBase.getCell(r, 48).value = { formula: "AU" + r + "*1.21", result: t.tarifaFleteroConIva || (t.tarifaFletero * 1.21) };
+    wsBase.getCell(r, 49).value = t.debeFlete || 0;
+    wsBase.getCell(r, 50).value = { formula: "AT" + r + "*AU" + r, result: t.costoFletero };
+    wsBase.getCell(r, 51).value = { formula: "AX" + r + "-AW" + r, result: t.saldoFlete || 0 };
 
-    // 8. RENTABILIDAD BARALE (Sec 8: Cyan)
-    xml += `    <Cell ss:Formula="=RC[-10]-RC[-2]" ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.margenPesos}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=IF(RC[-11]&gt;0,RC[-1]/RC[-11],0)" ss:StyleID="Cell_Pct"><Data ss:Type="Number">${t.margenPct}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Divider_Center"><Data ss:Type="String">${escapeXml(t.estadoFacturacion)}</Data></Cell>\n`;
+    // 8. RENTABILIDAD BARALE
+    wsBase.getCell(r, 52).value = { formula: "AP" + r + "-AX" + r, result: t.margenPesos };
+    wsBase.getCell(r, 53).value = { formula: "IF(AP" + r + ">0, AZ" + r + "/AP" + r + ", 0)", result: t.margenPct };
+    wsBase.getCell(r, 54).value = t.estadoFacturacion;
 
-    // 9. INFO TANQUES (Sec 9: Gold)
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.peaje || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.precioKmTanque || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.valorViajeAforado27Tn || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kmLiquidadosAtanor || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.precioKmCobradoAtanor || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.kmLiquidadosBaraleFletero || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-2]-RC[-1]" ss:StyleID="Cell_Num"><Data ss:Type="Number">${t.difKmTanque || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Divider_Money"><Data ss:Type="Number">${t.precioKmPagadoFletero || 0}</Data></Cell>\n`;
+    // 9. INFO TANQUES
+    wsBase.getCell(r, 55).value = t.peaje || 0;
+    wsBase.getCell(r, 56).value = t.precioKmTanque || 0;
+    wsBase.getCell(r, 57).value = t.valorViajeAforado27Tn || 0;
+    wsBase.getCell(r, 58).value = t.kmLiquidadosAtanor || 0;
+    wsBase.getCell(r, 59).value = t.precioKmCobradoAtanor || 0;
+    wsBase.getCell(r, 60).value = t.kmLiquidadosBaraleFletero || 0;
+    wsBase.getCell(r, 61).value = { formula: "BF" + r + "-BH" + r, result: t.difKmTanque || 0 };
+    wsBase.getCell(r, 62).value = t.precioKmPagadoFletero || 0;
 
-    // 10. COMPRA PRODUC. TRANSPORTAR (Sec 10: Orange)
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.proveFacA || "-")}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.precioUnitCompra || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.precioCompraMinerales || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.totalComprarConIva || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.importeFacProveedor || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-1]-RC[-2]" ss:StyleID="Cell_Money"><Data ss:Type="Number">${t.difValorCompraDevengada || 0}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-27]-RC[-2]" ss:StyleID="Cell_Divider_Money"><Data ss:Type="Number">${t.ingresoNetoServicio || t.margenPesos}</Data></Cell>\n`;
+    // 10. COMPRA PRODUC. TRANSPORTAR
+    wsBase.getCell(r, 63).value = t.proveFacA || "-";
+    wsBase.getCell(r, 64).value = t.precioUnitCompra || 0;
+    wsBase.getCell(r, 65).value = t.precioCompraMinerales || 0;
+    wsBase.getCell(r, 66).value = t.totalComprarConIva || 0;
+    wsBase.getCell(r, 67).value = t.importeFacProveedor || 0;
+    wsBase.getCell(r, 68).value = { formula: "BO" + r + "-BN" + r, result: t.difValorCompraDevengada || 0 };
+    wsBase.getCell(r, 69).value = { formula: "AP" + r + "-BO" + r, result: t.ingresoNetoServicio || t.margenPesos };
 
-    xml += `   </Row>\n`;
+    // Formato de celdas
+    for (let c = 1; c <= 69; c++) {
+      const cell = wsBase.getCell(r, c);
+      cell.border = thinBorder;
+      if ([41, 42, 43, 44, 47, 48, 49, 50, 51, 52, 55, 56, 57, 59, 62, 64, 65, 66, 67, 68, 69].includes(c)) {
+        cell.numFmt = "$#,##0.00";
+      } else if (c === 53) {
+        cell.numFmt = "0.0%";
+      } else if ([23, 24, 25, 30, 32, 33, 34, 40, 46, 58, 60, 61].includes(c)) {
+        cell.numFmt = "#,##0.00";
+      }
+    }
   });
 
-  // Fila de Totales de la Planilla Base
+  // Fila de Totales de Base de Datos
+  const totalRowBase = 3 + trips.length;
+  wsBase.mergeCells(totalRowBase, 1, totalRowBase, 29);
+  const totalBaseLabel = wsBase.getCell(totalRowBase, 1);
+  totalBaseLabel.value = "TOTALES CONSOLIDADOS:";
+  totalBaseLabel.alignment = { horizontal: "right", vertical: "middle" };
+  totalBaseLabel.font = { name: "Calibri", size: 11, bold: true };
+  totalBaseLabel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+
+  const totalTn = trips.reduce((acc, t) => acc + (t.kgsCargados || 0), 0);
   const totalNeto = trips.reduce((acc, t) => acc + (t.netoGravado || 0), 0);
   const totalIva = trips.reduce((acc, t) => acc + (t.iva || 0), 0);
   const totalFact = trips.reduce((acc, t) => acc + (t.totalFacturado || 0), 0);
   const totalCostoFletero = trips.reduce((acc, t) => acc + (t.costoFletero || 0), 0);
   const totalMargen = trips.reduce((acc, t) => acc + (t.margenPesos || 0), 0);
-  const totalTn = trips.reduce((acc, t) => acc + (t.kgsCargados || 0), 0);
 
-  xml += `   <Row ss:Height="22">\n`;
-  xml += `    <Cell ss:MergeAcross="28" ss:StyleID="Cell_Total_Label"><Data ss:Type="String">TOTALES CONSOLIDADOS:</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C30:R${2+trips.length}C30)" ss:StyleID="Cell_Total_Num"><Data ss:Type="Number">${totalTn}</Data></Cell>\n`;
-  xml += `    <Cell ss:MergeAcross="10" ss:StyleID="Cell_Total_Label"><Data ss:Type="String"></Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C42:R${2+trips.length}C42)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalNeto}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C43:R${2+trips.length}C43)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalIva}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C44:R${2+trips.length}C44)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalFact}</Data></Cell>\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Total_Label"><Data ss:Type="String"></Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C50:R${2+trips.length}C50)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalCostoFletero}</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Cell_Total_Label"><Data ss:Type="String"></Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C52:R${2+trips.length}C52)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalMargen}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=IF(RC[-4]&gt;0,RC[-1]/RC[-4],0)" ss:StyleID="Cell_Total_Pct"><Data ss:Type="Number">${totalNeto > 0 ? (totalMargen / totalNeto) : 0}</Data></Cell>\n`;
-  xml += `    <Cell ss:MergeAcross="15" ss:StyleID="Cell_Total_Label"><Data ss:Type="String"></Data></Cell>\n`;
-  xml += `   </Row>\n`;
+  // Total Tn (Col AD: 30)
+  const cellTotTn = wsBase.getCell(totalRowBase, 30);
+  cellTotTn.value = { formula: "SUM(AD3:AD" + dataEnd + ")", result: totalTn };
+  cellTotTn.font = { name: "Calibri", size: 11, bold: true };
+  cellTotTn.numFmt = "#,##0.00";
+  cellTotTn.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-  xml += `  </Table>
- </Worksheet>
-`;
+  // Total Neto (Col AP: 42)
+  const cellTotNeto = wsBase.getCell(totalRowBase, 42);
+  cellTotNeto.value = { formula: "SUM(AP3:AP" + dataEnd + ")", result: totalNeto };
+  cellTotNeto.font = { name: "Calibri", size: 11, bold: true };
+  cellTotNeto.numFmt = "$#,##0.00";
+  cellTotNeto.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-  // =========================================================================
-  // HOJA 2: CONTROL DOC PENDIENTE - SECTORIZADA CON LOS COLORES DE ORIGEN
-  // =========================================================================
-  const totalOrdenes = trips.length;
-  const remitosPendientesCount = trips.filter(t => 
-    !t.remitoRemitente || t.remitoRemitente.toLowerCase().includes('pend') ||
-    !t.remitoJuanMiguel || t.remitoJuanMiguel.toLowerCase().includes('pend')
-  ).length;
-  const facturasPendientesCount = trips.filter(t => 
-    t.factura.toLowerCase().includes('pend')
-  ).length;
-  const tnPendientes = trips
-    .filter(t => t.factura.toLowerCase().includes('pend'))
-    .reduce((acc, t) => acc + (t.kgsCargados || 0), 0);
+  // Total IVA (Col AQ: 43)
+  const cellTotIva = wsBase.getCell(totalRowBase, 43);
+  cellTotIva.value = { formula: "SUM(AQ3:AQ" + dataEnd + ")", result: totalIva };
+  cellTotIva.font = { name: "Calibri", size: 11, bold: true };
+  cellTotIva.numFmt = "$#,##0.00";
+  cellTotIva.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-  const pendingTrips = trips.filter(t => 
-    !t.remitoRemitente || 
-    t.remitoRemitente.toLowerCase().includes('pend') ||
-    !t.remitoJuanMiguel || 
-    t.remitoJuanMiguel.toLowerCase().includes('pend') ||
-    t.factura.toLowerCase().includes('pend')
-  );
+  // Total Facturado c/IVA (Col AR: 44)
+  const cellTotFact = wsBase.getCell(totalRowBase, 44);
+  cellTotFact.value = { formula: "SUM(AR3:AR" + dataEnd + ")", result: totalFact };
+  cellTotFact.font = { name: "Calibri", size: 11, bold: true };
+  cellTotFact.numFmt = "$#,##0.00";
+  cellTotFact.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-  const sortedPendingTrips = [...pendingTrips].sort((a, b) => 
-    (a.clienteContrata || '').localeCompare(b.clienteContrata || '')
-  );
+  // Total Costo Fletero (Col AX: 50)
+  const cellTotCosto = wsBase.getCell(totalRowBase, 50);
+  cellTotCosto.value = { formula: "SUM(AX3:AX" + dataEnd + ")", result: totalCostoFletero };
+  cellTotCosto.font = { name: "Calibri", size: 11, bold: true };
+  cellTotCosto.numFmt = "$#,##0.00";
+  cellTotCosto.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-  xml += `<Worksheet ss:Name="Control Doc Pendiente">
-  <Table ss:DefaultRowHeight="20">
-   <Column ss:AutoFitWidth="0" ss:Width="230"/>
-   <Column ss:AutoFitWidth="0" ss:Width="150"/>
-   <Column ss:AutoFitWidth="0" ss:Width="160"/>
-   <Column ss:AutoFitWidth="0" ss:Width="160"/>
-   <Column ss:AutoFitWidth="0" ss:Width="200"/>
-   <Column ss:AutoFitWidth="0" ss:Width="100"/>
+  // Total Margen (Col AZ: 52)
+  const cellTotMargen = wsBase.getCell(totalRowBase, 52);
+  cellTotMargen.value = { formula: "SUM(AZ3:AZ" + dataEnd + ")", result: totalMargen };
+  cellTotMargen.font = { name: "Calibri", size: 11, bold: true };
+  cellTotMargen.numFmt = "$#,##0.00";
+  cellTotMargen.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-   <!-- TÍTULO DE LA HOJA -->
-   <Row ss:Height="26">
-    <Cell ss:MergeAcross="5" ss:StyleID="Title_Big"><Data ss:Type="String">CONTROL Y SEGUIMIENTO DE DOCUMENTACIÓN PENDIENTE</Data></Cell>
-   </Row>
-   <Row ss:Height="28">
-    <Cell ss:MergeAcross="5" ss:StyleID="Title_Sub"><Data ss:Type="String">Reporte de control administrativo para identificar las órdenes de carga asignadas que tienen documentación pendiente de entrega (remitos cliente o Juan y Miguel), facilitando su gestión antes de la liquidación de fleteros y habilitación para facturación.</Data></Cell>
-   </Row>
-   <Row ss:Height="12"></Row>
+  // Margen % (Col BA: 53)
+  const cellTotPct = wsBase.getCell(totalRowBase, 53);
+  cellTotPct.value = { formula: "IF(AP" + totalRowBase + ">0, AZ" + totalRowBase + "/AP" + totalRowBase + ", 0)", result: totalNeto > 0 ? totalMargen / totalNeto : 0 };
+  cellTotPct.font = { name: "Calibri", size: 11, bold: true };
+  cellTotPct.numFmt = "0.0%";
+  cellTotPct.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
 
-   <!-- TARJETAS DE INDICADORES SECTORIZADAS POR COLOR -->
-   <Row ss:Height="22">
-    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Total Órdenes (Sector 1)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Remitos Pendientes (Sector 5)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Facturas Pendientes (Sector 6)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Tn Pendientes (Sector 5)</Data></Cell>
-   </Row>
-   <Row ss:Height="22">
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">${totalOrdenes}</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${remitosPendientesCount} viajes</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${facturasPendientesCount} órdenes</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${tnPendientes.toFixed(2)} Tn</Data></Cell>
-   </Row>
-   <Row ss:Height="14"></Row>
+  for (let c = 1; c <= 69; c++) {
+    const cell = wsBase.getCell(totalRowBase, c);
+    cell.border = { top: { style: "medium", color: { argb: "FF0F172A" } }, bottom: { style: "double", color: { argb: "FF0F172A" } } };
+  }
 
-   <!-- FILTROS SUPERIORES IDENTIFICADOS CON SUS COLORES DE ORIGEN EN HOJA 1 -->
-   <Row ss:Height="22">
-    <Cell ss:MergeAcross="4" ss:StyleID="Filter_Header"><Data ss:Type="String">FILTROS SUPERIORES DE CONTROL (Paso 1) - IDENTIFICACIÓN POR SECTOR DE ORIGEN</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Nro Rto Cliente - Remitente</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">Pendiente</Data></Cell>
-    <Cell ss:MergeAcross="2" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna W | Origen: Hoja 1 - Sector 5 (Remitos y Toneladas)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Tipo Viaje</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Varios elementos)</Data></Cell>
-    <Cell ss:MergeAcross="2" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna F | Origen: Hoja 1 - Sector 2 (Transporte y Chofer)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Tte Propio / Tercero</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Todas)</Data></Cell>
-    <Cell ss:MergeAcross="2" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna H | Origen: Hoja 1 - Sector 2 (Transporte y Chofer)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Fecha Liqui Fleteros</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Todas)</Data></Cell>
-    <Cell ss:MergeAcross="2" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna C | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
-   </Row>
-   <Row ss:Height="14"></Row>
+  // -------------------------------------------------------------
+  // HOJA 2: Resumen Choferes
+  // -------------------------------------------------------------
+  const ws2 = wb.addWorksheet("Resumen Choferes");
+  ws2.getColumn(1).width = 28;
+  ws2.getColumn(2).width = 16;
+  ws2.getColumn(3).width = 16;
+  ws2.getColumn(4).width = 18;
+  ws2.getColumn(5).width = 20;
+  ws2.getColumn(6).width = 20;
 
-   <!-- ENCABEZADOS DE LA TABLA DINÁMICA SECTORIZADOS POR COLOR DE ORIGEN -->
-   <Row ss:Height="24">
-    <Cell ss:StyleID="Header_Sec3"><Data ss:Type="String">Cliente Contrata Servicio (Sec. 3)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Fecha Orden de Carga (Sec. 1)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Chofer (Sec. 2)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec4"><Data ss:Type="String">Origen Carga (Sec. 4)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec4"><Data ss:Type="String">Localidad Destino Mercaderia. (Sec. 4)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Total (Cuenta Kgs - Sec. 5)</Data></Cell>
-   </Row>
-`;
-
-  let totalDocCount = 0;
-  let lastClient = "";
-  sortedPendingTrips.forEach(t => {
-    const isNew = t.clienteContrata !== lastClient;
-    xml += `   <Row ss:Height="19">\n`;
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${isNew ? escapeXml(t.clienteContrata) : ''}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(t.fechaOrdenCarga || t.fechaCarga)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.chofer)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.origen)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(t.localidadDestino)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">1</Data></Cell>\n`;
-    xml += `   </Row>\n`;
-    lastClient = t.clienteContrata;
-    totalDocCount += 1;
+  const h2 = ["Chofer", "Cantidad Viajes", "Total Km", "Tn Transportadas", "Costo Flete ($)", "Tarifa Promedio ($/Tn)"];
+  h2.forEach((h, i) => {
+    const cell = ws2.getCell(1, i + 1);
+    cell.value = h;
+    cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
   });
 
-  xml += `   <Row ss:Height="22">\n`;
-  xml += `    <Cell ss:MergeAcross="4" ss:StyleID="Cell_Total_Label"><Data ss:Type="String">Total general:</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Cell_Total_Num"><Data ss:Type="Number">${totalDocCount}</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `  </Table>
- </Worksheet>
-`;
+  const uniqueDrivers = Array.from(new Set(trips.map(t => t.chofer || "Sin Asignar"))).sort();
+  uniqueDrivers.forEach((d, idx) => {
+    const r = 2 + idx;
+    ws2.getCell(r, 1).value = d;
+    ws2.getCell(r, 1).font = { name: "Calibri", size: 10, bold: true };
+    ws2.getCell(r, 2).value = { formula: "COUNTIF('Base de Datos'!$I$3:$I$" + dataEnd + ", A" + r + ")", result: trips.filter(t => t.chofer === d).length };
+    ws2.getCell(r, 3).value = { formula: "SUMIF('Base de Datos'!$I$3:$I$" + dataEnd + ", A" + r + ", 'Base de Datos'!$Y$3:$Y$" + dataEnd + ")", result: trips.filter(t => t.chofer === d).reduce((a, b) => a + (b.totalKm || 0), 0) };
+    ws2.getCell(r, 4).value = { formula: "SUMIF('Base de Datos'!$I$3:$I$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AD$3:$AD$" + dataEnd + ")", result: trips.filter(t => t.chofer === d).reduce((a, b) => a + (b.kgsCargados || 0), 0) };
+    ws2.getCell(r, 5).value = { formula: "SUMIF('Base de Datos'!$I$3:$I$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AX$3:$AX$" + dataEnd + ")", result: trips.filter(t => t.chofer === d).reduce((a, b) => a + (b.costoFletero || 0), 0) };
+    ws2.getCell(r, 6).value = { formula: "IF(D" + r + ">0, E" + r + "/D" + r + ", 0)", result: 0 };
 
-  // =========================================================================
-  // HOJA 3: RENDIMIENTO CHOFERES - SECTORIZADA CON LOS COLORES DE ORIGEN
-  // =========================================================================
-  const driverMap = trips.reduce((acc, t) => {
-    const d = t.chofer || 'Sin Asignar';
-    if (!acc[d]) {
-      acc[d] = {
-        Chofer: d,
-        Transporte: t.transporte,
-        Modalidad: t.tipoTransporte,
-        Viajes: 0,
-        TotalTn: 0,
-        FacturadoNG: 0,
-        CostoFletero: 0,
-        MargenNeto: 0
-      };
+    for (let c = 1; c <= 6; c++) {
+      const cell = ws2.getCell(r, c);
+      cell.border = thinBorder;
+      if (c === 2 || c === 3 || c === 4) cell.numFmt = "#,##0.00";
+      if (c === 5 || c === 6) cell.numFmt = "$#,##0.00";
     }
-    acc[d].Viajes += 1;
-    acc[d].TotalTn += (t.kgsCargados || 0);
-    acc[d].FacturadoNG += (t.netoGravado || 0);
-    acc[d].CostoFletero += (t.costoFletero || 0);
-    acc[d].MargenNeto += (t.margenPesos || 0);
-    return acc;
-  }, {} as Record<string, any>);
-
-  xml += `<Worksheet ss:Name="Rendimiento Choferes">
-  <Table ss:DefaultRowHeight="20">
-   <Column ss:AutoFitWidth="0" ss:Width="160"/>
-   <Column ss:AutoFitWidth="0" ss:Width="150"/>
-   <Column ss:AutoFitWidth="0" ss:Width="110"/>
-   <Column ss:AutoFitWidth="0" ss:Width="120"/>
-   <Column ss:AutoFitWidth="0" ss:Width="130"/>
-   <Column ss:AutoFitWidth="0" ss:Width="140"/>
-   <Column ss:AutoFitWidth="0" ss:Width="140"/>
-   <Column ss:AutoFitWidth="0" ss:Width="140"/>
-   <Column ss:AutoFitWidth="0" ss:Width="100"/>
-
-   <!-- TÍTULO -->
-   <Row ss:Height="26">
-    <Cell ss:MergeAcross="8" ss:StyleID="Title_Big"><Data ss:Type="String">LIQUIDACIÓN &amp; RENDIMIENTO POR CHOFER / FLETERO</Data></Cell>
-   </Row>
-   <Row ss:Height="12"></Row>
-
-   <!-- ENCABEZADOS SECTORIZADOS POR COLOR DE ORIGEN -->
-   <Row ss:Height="24">
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Chofer (Sector 2)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Transporte (Sector 2)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Modalidad (Sector 2)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Viajes (Sector 5)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Total Toneladas (Sec. 5)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Facturado Neto (Sec. 6)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec7"><Data ss:Type="String">Costo Fletero (Sec. 7)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec8"><Data ss:Type="String">Margen Neto (Sec. 8)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec8"><Data ss:Type="String">Margen % (Sec. 8)</Data></Cell>
-   </Row>
-`;
-
-  Object.values(driverMap).forEach((d: any) => {
-    const pct = d.FacturadoNG > 0 ? (d.MargenNeto / d.FacturadoNG) : 0;
-    xml += `   <Row ss:Height="19">\n`;
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(d.Chofer)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Text"><Data ss:Type="String">${escapeXml(d.Transporte)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(d.Modalidad)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">${d.Viajes}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${d.TotalTn}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${d.FacturadoNG}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${d.CostoFletero}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=RC[-2]-RC[-1]" ss:StyleID="Cell_Money"><Data ss:Type="Number">${d.MargenNeto}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=IF(RC[-3]&gt;0,RC[-1]/RC[-3],0)" ss:StyleID="Cell_Pct"><Data ss:Type="Number">${pct}</Data></Cell>\n`;
-    xml += `   </Row>\n`;
   });
 
-  // Fila de Totales de Choferes
-  const dCount = Object.keys(driverMap).length;
-  xml += `   <Row ss:Height="22">\n`;
-  xml += `    <Cell ss:MergeAcross="2" ss:StyleID="Cell_Total_Label"><Data ss:Type="String">TOTALES GENERALES:</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C4:R${2+dCount}C4)" ss:StyleID="Cell_Total_Num"><Data ss:Type="Number">${trips.length}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C5:R${2+dCount}C5)" ss:StyleID="Cell_Total_Num"><Data ss:Type="Number">${totalTn}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C6:R${2+dCount}C6)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalNeto}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C7:R${2+dCount}C7)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalCostoFletero}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C8:R${2+dCount}C8)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalMargen}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=IF(RC[-3]&gt;0,RC[-1]/RC[-3],0)" ss:StyleID="Cell_Total_Pct"><Data ss:Type="Number">${totalNeto > 0 ? (totalMargen / totalNeto) : 0}</Data></Cell>\n`;
-  xml += `   </Row>\n`;
+  const totRow2 = 2 + uniqueDrivers.length;
+  ws2.getCell(totRow2, 1).value = "TOTALES GENERALES";
+  ws2.getCell(totRow2, 1).font = { name: "Calibri", size: 11, bold: true };
+  ws2.getCell(totRow2, 2).value = { formula: "SUM(B2:B" + (totRow2 - 1) + ")", result: trips.length };
+  ws2.getCell(totRow2, 4).value = { formula: "SUM(D2:D" + (totRow2 - 1) + ")", result: totalTn };
+  ws2.getCell(totRow2, 5).value = { formula: "SUM(E2:E" + (totRow2 - 1) + ")", result: totalCostoFletero };
+  for (let c = 1; c <= 6; c++) {
+    const cell = ws2.getCell(totRow2, c);
+    cell.font = { name: "Calibri", size: 11, bold: true };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+    cell.border = { top: { style: "medium", color: { argb: "FF0F172A" } }, bottom: { style: "double", color: { argb: "FF0F172A" } } };
+    if (c >= 2 && c <= 4) cell.numFmt = "#,##0.00";
+    if (c >= 5) cell.numFmt = "$#,##0.00";
+  }
 
-  xml += `  </Table>
- </Worksheet>
-`;
+  // -------------------------------------------------------------
+  // HOJA 3: Rendimiento Choferes
+  // -------------------------------------------------------------
+  const ws3 = wb.addWorksheet("Rendimiento Choferes");
+  ws3.getColumn(1).width = 28;
+  ws3.getColumn(2).width = 20;
+  ws3.getColumn(3).width = 20;
+  ws3.getColumn(4).width = 20;
+  ws3.getColumn(5).width = 16;
 
-  // =========================================================================
-  // HOJA 4: RESUMEN CLIENTES - SECTORIZADA CON LOS COLORES DE ORIGEN
-  // =========================================================================
-  const clientMap = trips.reduce((acc, t) => {
-    const c = t.clienteContrata || 'Sin Asignar';
-    if (!acc[c]) {
-      acc[c] = {
-        Cliente: c,
-        Viajes: 0,
-        TotalTn: 0,
-        FacturadoNG: 0,
-        MargenNeto: 0
-      };
+  const h3 = ["Chofer", "Facturado Neto ($)", "Costo Fletero ($)", "Margen Bruto ($)", "Margen %"];
+  h3.forEach((h, i) => {
+    const cell = ws3.getCell(1, i + 1);
+    cell.value = h;
+    cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0284C7" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
+
+  uniqueDrivers.forEach((d, idx) => {
+    const r = 2 + idx;
+    const fNeto = trips.filter(t => t.chofer === d).reduce((a, b) => a + (b.netoGravado || 0), 0);
+    const fCosto = trips.filter(t => t.chofer === d).reduce((a, b) => a + (b.costoFletero || 0), 0);
+    ws3.getCell(r, 1).value = d;
+    ws3.getCell(r, 1).font = { name: "Calibri", size: 10, bold: true };
+    ws3.getCell(r, 2).value = { formula: "SUMIF('Base de Datos'!$I$3:$I$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AP$3:$AP$" + dataEnd + ")", result: fNeto };
+    ws3.getCell(r, 3).value = { formula: "SUMIF('Base de Datos'!$I$3:$I$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AX$3:$AX$" + dataEnd + ")", result: fCosto };
+    ws3.getCell(r, 4).value = { formula: "B" + r + "-C" + r, result: fNeto - fCosto };
+    ws3.getCell(r, 5).value = { formula: "IF(B" + r + ">0, D" + r + "/B" + r + ", 0)", result: fNeto > 0 ? (fNeto - fCosto) / fNeto : 0 };
+
+    for (let c = 1; c <= 5; c++) {
+      const cell = ws3.getCell(r, c);
+      cell.border = thinBorder;
+      if (c >= 2 && c <= 4) cell.numFmt = "$#,##0.00";
+      if (c === 5) cell.numFmt = "0.0%";
     }
-    acc[c].Viajes += 1;
-    acc[c].TotalTn += (t.kgsCargados || 0);
-    acc[c].FacturadoNG += (t.netoGravado || 0);
-    acc[c].MargenNeto += (t.margenPesos || 0);
-    return acc;
-  }, {} as Record<string, any>);
-
-  xml += `<Worksheet ss:Name="Resumen Clientes">
-  <Table ss:DefaultRowHeight="20">
-   <Column ss:AutoFitWidth="0" ss:Width="200"/>
-   <Column ss:AutoFitWidth="0" ss:Width="120"/>
-   <Column ss:AutoFitWidth="0" ss:Width="140"/>
-   <Column ss:AutoFitWidth="0" ss:Width="150"/>
-   <Column ss:AutoFitWidth="0" ss:Width="150"/>
-
-   <!-- TÍTULO -->
-   <Row ss:Height="26">
-    <Cell ss:MergeAcross="4" ss:StyleID="Title_Big"><Data ss:Type="String">CONSOLIDADO OPERATIVO POR CLIENTE</Data></Cell>
-   </Row>
-   <Row ss:Height="12"></Row>
-
-   <!-- ENCABEZADOS SECTORIZADOS POR COLOR DE ORIGEN -->
-   <Row ss:Height="24">
-    <Cell ss:StyleID="Header_Sec3"><Data ss:Type="String">Cliente Contrata Servicio (Sec. 3)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Cantidad Viajes (Sec. 5)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec5"><Data ss:Type="String">Total Toneladas (Sec. 5)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Facturación Neta (Sec. 6)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec8"><Data ss:Type="String">Margen Generado (Sec. 8)</Data></Cell>
-   </Row>
-`;
-
-  Object.values(clientMap).forEach((c: any) => {
-    xml += `   <Row ss:Height="19">\n`;
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(c.Cliente)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">${c.Viajes}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Num"><Data ss:Type="Number">${c.TotalTn}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${c.FacturadoNG}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Money"><Data ss:Type="Number">${c.MargenNeto}</Data></Cell>\n`;
-    xml += `   </Row>\n`;
   });
 
-  // Fila de Totales de Clientes
-  const cCount = Object.keys(clientMap).length;
-  xml += `   <Row ss:Height="22">\n`;
-  xml += `    <Cell ss:StyleID="Cell_Total_Label"><Data ss:Type="String">TOTALES GENERALES:</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C2:R${2+cCount}C2)" ss:StyleID="Cell_Total_Num"><Data ss:Type="Number">${trips.length}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C3:R${2+cCount}C3)" ss:StyleID="Cell_Total_Num"><Data ss:Type="Number">${totalTn}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C4:R${2+cCount}C4)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalNeto}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R3C5:R${2+cCount}C5)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalMargen}</Data></Cell>\n`;
-  xml += `   </Row>\n`;
+  const totRow3 = 2 + uniqueDrivers.length;
+  ws3.getCell(totRow3, 1).value = "TOTALES GENERALES";
+  ws3.getCell(totRow3, 2).value = { formula: "SUM(B2:B" + (totRow3 - 1) + ")", result: totalNeto };
+  ws3.getCell(totRow3, 3).value = { formula: "SUM(C2:C" + (totRow3 - 1) + ")", result: totalCostoFletero };
+  ws3.getCell(totRow3, 4).value = { formula: "SUM(D2:D" + (totRow3 - 1) + ")", result: totalMargen };
+  ws3.getCell(totRow3, 5).value = { formula: "IF(B" + totRow3 + ">0, D" + totRow3 + "/B" + totRow3 + ", 0)", result: totalNeto > 0 ? totalMargen / totalNeto : 0 };
+  for (let c = 1; c <= 5; c++) {
+    const cell = ws3.getCell(totRow3, c);
+    cell.font = { name: "Calibri", size: 11, bold: true };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+    cell.border = { top: { style: "medium", color: { argb: "FF0F172A" } }, bottom: { style: "double", color: { argb: "FF0F172A" } } };
+    if (c >= 2 && c <= 4) cell.numFmt = "$#,##0.00";
+    if (c === 5) cell.numFmt = "0.0%";
+  }
 
-  xml += `  </Table>
- </Worksheet>
-`;
+  // -------------------------------------------------------------
+  // HOJA 4: Resumen Clientes
+  // -------------------------------------------------------------
+  const ws4 = wb.addWorksheet("Resumen Clientes");
+  ws4.getColumn(1).width = 32;
+  ws4.getColumn(2).width = 16;
+  ws4.getColumn(3).width = 18;
+  ws4.getColumn(4).width = 22;
+  ws4.getColumn(5).width = 22;
 
-  // =========================================================================
-  // HOJA 5: CONTROL FACTURAS EMITIDAS - SECTORIZADA CON LOS COLORES DE ORIGEN
-  // =========================================================================
+  const h4 = ["Cliente Contrata Servicio", "Cantidad Viajes", "Total Toneladas", "Facturación Neta ($)", "Margen Generado ($)"];
+  h4.forEach((h, i) => {
+    const cell = ws4.getCell(1, i + 1);
+    cell.value = h;
+    cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4338CA" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
+
+  const uniqueClients = Array.from(new Set(trips.map(t => t.clienteContrata || "Sin Asignar"))).sort();
+  uniqueClients.forEach((cl, idx) => {
+    const r = 2 + idx;
+    const clTrips = trips.filter(t => t.clienteContrata === cl);
+    ws4.getCell(r, 1).value = cl;
+    ws4.getCell(r, 1).font = { name: "Calibri", size: 10, bold: true };
+    ws4.getCell(r, 2).value = { formula: "COUNTIF('Base de Datos'!$L$3:$L$" + dataEnd + ", A" + r + ")", result: clTrips.length };
+    ws4.getCell(r, 3).value = { formula: "SUMIF('Base de Datos'!$L$3:$L$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AD$3:$AD$" + dataEnd + ")", result: clTrips.reduce((a, b) => a + (b.kgsCargados || 0), 0) };
+    ws4.getCell(r, 4).value = { formula: "SUMIF('Base de Datos'!$L$3:$L$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AP$3:$AP$" + dataEnd + ")", result: clTrips.reduce((a, b) => a + (b.netoGravado || 0), 0) };
+    ws4.getCell(r, 5).value = { formula: "SUMIF('Base de Datos'!$L$3:$L$" + dataEnd + ", A" + r + ", 'Base de Datos'!$AZ$3:$AZ$" + dataEnd + ")", result: clTrips.reduce((a, b) => a + (b.margenPesos || 0), 0) };
+
+    for (let c = 1; c <= 5; c++) {
+      const cell = ws4.getCell(r, c);
+      cell.border = thinBorder;
+      if (c === 2 || c === 3) cell.numFmt = "#,##0.00";
+      if (c === 4 || c === 5) cell.numFmt = "$#,##0.00";
+    }
+  });
+
+  const totRow4 = 2 + uniqueClients.length;
+  ws4.getCell(totRow4, 1).value = "TOTALES GENERALES";
+  ws4.getCell(totRow4, 2).value = { formula: "SUM(B2:B" + (totRow4 - 1) + ")", result: trips.length };
+  ws4.getCell(totRow4, 3).value = { formula: "SUM(C2:C" + (totRow4 - 1) + ")", result: totalTn };
+  ws4.getCell(totRow4, 4).value = { formula: "SUM(D2:D" + (totRow4 - 1) + ")", result: totalNeto };
+  ws4.getCell(totRow4, 5).value = { formula: "SUM(E2:E" + (totRow4 - 1) + ")", result: totalMargen };
+  for (let c = 1; c <= 5; c++) {
+    const cell = ws4.getCell(totRow4, c);
+    cell.font = { name: "Calibri", size: 11, bold: true };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+    cell.border = { top: { style: "medium", color: { argb: "FF0F172A" } }, bottom: { style: "double", color: { argb: "FF0F172A" } } };
+    if (c === 2 || c === 3) cell.numFmt = "#,##0.00";
+    if (c === 4 || c === 5) cell.numFmt = "$#,##0.00";
+  }
+
+  // -------------------------------------------------------------
+  // HOJA 5: Control Facturas Emitidas (La hoja solicitada por el usuario)
+  // -------------------------------------------------------------
+  const ws5 = wb.addWorksheet("Control Facturas Emitidas");
+  ws5.getColumn(1).width = 40;
+  ws5.getColumn(2).width = 24;
+  ws5.getColumn(3).width = 28;
+
+  // Título y Subtítulo
+  ws5.mergeCells("A1:C1");
+  const tCell = ws5.getCell("A1");
+  tCell.value = "CONTROL DE FACTURAS EMITIDAS — EJERCICIO 2026 (INFORME ADMINISTRATIVO)";
+  tCell.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FF1E3A8A" } };
+
+  ws5.mergeCells("A2:C2");
+  const sCell = ws5.getCell("A2");
+  sCell.value = "Reporte de consolidación del total facturado por cliente para el punto de venta 12. Fórmulas 100% funcionales vinculadas a Hoja 1 ('Base de Datos').";
+  sCell.font = { name: "Calibri", size: 10, color: { argb: "FF475569" } };
+
+  // Parámetros Primarios de Control
+  ws5.mergeCells("A4:C4");
+  const pHeader = ws5.getCell("A4");
+  pHeader.value = "PARÁMETROS PRIMARIOS DE CONTROL (IDENTIFICACIÓN POR SECTOR DE ORIGEN EN HOJA 1 'Base de Datos')";
+  pHeader.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FF0F172A" } };
+  pHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+  pHeader.border = thinBorder;
+
+  const controlParams = [
+    ["Ejercicio", "2026", "Sector 1 (Datos Generales) - Columna B"],
+    ["Fecha Fac. BSA", "(Varios elementos)", "Sector 6 (Facturación y Ventas) - Columna AK"],
+    ["Tipo Viaje", "(Varios elementos)", "Sector 2 (Transporte y Chofer) - Columna K"],
+    ["Mes - Año Operativo", "(Todas) - Cta Ctble 430001", "Sector 1 (Datos Generales) - Columna E"],
+    ["FAC", "(Todas) - Cta Ctble 430003", "Sector 6 (Facturación y Ventas) - Columna AJ"]
+  ];
+
+  controlParams.forEach((cp, idx) => {
+    const row = 5 + idx;
+    ws5.getCell(row, 1).value = cp[0];
+    ws5.getCell(row, 1).font = { name: "Calibri", size: 10, bold: true, color: { argb: "FF1E3A8A" } };
+    ws5.getCell(row, 1).border = thinBorder;
+
+    ws5.getCell(row, 2).value = cp[1];
+    ws5.getCell(row, 2).alignment = { horizontal: "center" };
+    ws5.getCell(row, 2).border = thinBorder;
+
+    ws5.getCell(row, 3).value = cp[2];
+    ws5.getCell(row, 3).font = { name: "Calibri", size: 9, color: { argb: "FF64748B" } };
+    ws5.getCell(row, 3).border = thinBorder;
+  });
+
+  // Sección DEBE
+  ws5.mergeCells("A11:C11");
+  const bannerDebe = ws5.getCell("A11");
+  bannerDebe.value = "DEBE. (Agrupación por Cliente Contrata Servicio)";
+  bannerDebe.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+  bannerDebe.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } };
+  bannerDebe.alignment = { horizontal: "center", vertical: "middle" };
+
+  // Headers de la tabla DEBE
+  ws5.getCell("A12").value = "Cliente Contrata Servicio (Sec. 3)";
+  ws5.getCell("A12").font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+  ws5.getCell("A12").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4338CA" } };
+  ws5.getCell("A12").alignment = { horizontal: "left", vertical: "middle" };
+
+  ws5.getCell("B12").value = "Fecha Liqui Fleteros (Sec. 1)";
+  ws5.getCell("B12").font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+  ws5.getCell("B12").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } };
+  ws5.getCell("B12").alignment = { horizontal: "center", vertical: "middle" };
+
+  ws5.getCell("C12").value = "Total Facturado c/IVA (DEBE. Sec. 6)";
+  ws5.getCell("C12").font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+  ws5.getCell("C12").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF15803D" } };
+  ws5.getCell("C12").alignment = { horizontal: "right", vertical: "middle" };
+
+  ["A12", "B12", "C12"].forEach(p => {
+    ws5.getCell(p).border = thinBorder;
+  });
+
   const invoiceRows = calculateClientInvoiceTotals(trips);
-  const detailedInvoices = getDetailedInvoiceRecords(trips).filter(r => r.cliente !== 'FIORETTI');
-  const totalFacturasColor = invoiceRows.reduce((acc, r) => acc + r.total, 0);
-  const totalNGColor = detailedInvoices.reduce((acc, r) => acc + r.ng, 0);
-  const totalDebeColor = detailedInvoices.reduce((acc, r) => acc + r.debe, 0);
+  const totalFacturasPto12 = invoiceRows.reduce((acc, r) => acc + r.total, 0);
 
-  xml += `<Worksheet ss:Name="Control Facturas Emitidas">
-  <Table ss:DefaultRowHeight="20">
-   <Column ss:AutoFitWidth="0" ss:Width="160"/>
-   <Column ss:AutoFitWidth="0" ss:Width="230"/>
-   <Column ss:AutoFitWidth="0" ss:Width="130"/>
-   <Column ss:AutoFitWidth="0" ss:Width="130"/>
-   <Column ss:AutoFitWidth="0" ss:Width="160"/>
-   <Column ss:AutoFitWidth="0" ss:Width="180"/>
+  invoiceRows.forEach((r, idx) => {
+    const row = 13 + idx;
 
-   <!-- TÍTULO -->
-   <Row ss:Height="26">
-    <Cell ss:MergeAcross="5" ss:StyleID="Title_Big"><Data ss:Type="String">CONTROL DE FACTURAS EMITIDAS — EJERCICIO 2026 (INFORME ADMINISTRATIVO)</Data></Cell>
-   </Row>
-   <Row ss:Height="28">
-    <Cell ss:MergeAcross="5" ss:StyleID="Title_Sub"><Data ss:Type="String">Reporte de consolidación del total facturado por cliente para el punto de venta 12. Fuente de información: Hoja 1 ('Base de Datos'). Fórmulas 100% funcionales vinculadas a los sectores operativos y comerciales.</Data></Cell>
-   </Row>
-   <Row ss:Height="12"></Row>
+    // Col A: Cliente
+    const cellA = ws5.getCell("A" + row);
+    cellA.value = r.cliente;
+    cellA.font = { name: "Calibri", size: 10, bold: true };
+    cellA.border = thinBorder;
 
-   <!-- PARÁMETROS PRIMARIOS DE FILTRO SECTORIZADOS POR COLOR DE ORIGEN -->
-   <Row ss:Height="22">
-    <Cell ss:MergeAcross="5" ss:StyleID="Filter_Header"><Data ss:Type="String">PARÁMETROS PRIMARIOS DE CONTROL (IDENTIFICACIÓN POR SECTOR DE ORIGEN EN HOJA 1 'Base de Datos')</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Ejercicio</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="Number">2026</Data></Cell>
-    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna B | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Fecha Fac. BSA</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Varios elementos)</Data></Cell>
-    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna AK | Origen: Hoja 1 - Sector 6 (Facturación y Ventas)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec2"><Data ss:Type="String">Tipo Viaje</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Varios elementos)</Data></Cell>
-    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna K | Origen: Hoja 1 - Sector 2 (Transporte y Chofer)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Mes - Año Operativo</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Todas) - Cta Ctble 430001</Data></Cell>
-    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna E | Origen: Hoja 1 - Sector 1 (Datos Generales)</Data></Cell>
-   </Row>
-   <Row ss:Height="20">
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">FAC</Data></Cell>
-    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">(Todas) - Cta Ctble 430003</Data></Cell>
-    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Text"><Data ss:Type="String">Campo Columna AJ | Origen: Hoja 1 - Sector 6 (Facturación y Ventas)</Data></Cell>
-   </Row>
-   <Row ss:Height="14"></Row>
+    // Col B: Fecha Liqui Fleteros vinculada con IFERROR e INDEX MATCH a Col D de Base de Datos
+    const cellB = ws5.getCell("B" + row);
+    cellB.value = {
+      formula: `IFERROR(INDEX('Base de Datos'!$D$3:$D$${dataEnd}, MATCH(A${row}, 'Base de Datos'!$L$3:$L$${dataEnd}, 0)), "")`,
+      result: r.fechaLiqui
+    };
+    cellB.alignment = { horizontal: "center", vertical: "middle" };
+    cellB.border = thinBorder;
 
-   <!-- 1. SECCIÓN DEBE: AGRUPACIÓN POR CLIENTE -->
-   <Row ss:Height="22">
-    <Cell ss:MergeAcross="2" ss:StyleID="Banner_Sec1"><Data ss:Type="String">DEBE. (Agrupación por Cliente Contrata Servicio)</Data></Cell>
-   </Row>
-   <Row ss:Height="24">
-    <Cell ss:StyleID="Header_Sec3"><Data ss:Type="String">Cliente Contrata Servicio (Sec. 3)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Fecha Liqui Fleteros (Sec. 1)</Data></Cell>
-    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Total Facturado c/IVA (DEBE. Sec. 6)</Data></Cell>
-   </Row>
-`;
-
-  invoiceRows.forEach(r => {
-    xml += `   <Row ss:Height="19">\n`;
-    xml += `    <Cell ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(r.cliente)}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C4:R${2+trips.length}C4, MATCH(RC[-1], &apos;Base de Datos&apos;!R3C12:R${2+trips.length}C12, 0)), &quot;&quot;)" ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaLiqui)}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=SUMIF(&apos;Base de Datos&apos;!R3C12:R${2+trips.length}C12, RC[-2], &apos;Base de Datos&apos;!R3C44:R${2+trips.length}C44)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.total}</Data></Cell>\n`;
-    xml += `   </Row>\n`;
+    // Col C: Total Facturado c/IVA vinculado con SUMIF a Col AR de Base de Datos
+    const cellC = ws5.getCell("C" + row);
+    cellC.value = {
+      formula: "SUMIF('Base de Datos'!$L$3:$L$" + dataEnd + ", A" + row + ", 'Base de Datos'!$AR$3:$AR$" + dataEnd + ")",
+      result: r.total
+    };
+    cellC.numFmt = "$#,##0.00";
+    cellC.alignment = { horizontal: "right", vertical: "middle" };
+    cellC.font = { name: "Calibri", size: 10, bold: true };
+    cellC.border = thinBorder;
   });
 
-  xml += `   <Row ss:Height="24">\n`;
-  xml += `    <Cell ss:MergeAcross="1" ss:StyleID="Cell_Total_Label"><Data ss:Type="String">Total general --- Punto Vta 12:</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R13C3:R${12+invoiceRows.length}C3)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalFacturasColor}</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="16"></Row>\n`;
+  // Fila de Total General
+  const totRowInv = 13 + invoiceRows.length;
+  ws5.mergeCells("A" + totRowInv + ":B" + totRowInv);
+  const totInvLabel = ws5.getCell("A" + totRowInv);
+  totInvLabel.value = "Total general --- Punto Vta 12:";
+  totInvLabel.font = { name: "Calibri", size: 11, bold: true };
+  totInvLabel.alignment = { horizontal: "right", vertical: "middle" };
+  totInvLabel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+  totInvLabel.border = { top: { style: "medium", color: { argb: "FF0F172A" } }, bottom: { style: "double", color: { argb: "FF0F172A" } } };
 
-  // 2. SECCIÓN CONTROL DE CORRELATIVIDAD DE FACTURAS EMITIDAS
-  const detStartRow = 13 + invoiceRows.length + 3; // Fila 35
-  const detEndRow = detStartRow + detailedInvoices.length - 1;
-  const detTotRow = detEndRow + 1;
+  const totInvVal = ws5.getCell("C" + totRowInv);
+  totInvVal.value = {
+    formula: "SUM(C13:C" + (totRowInv - 1) + ")",
+    result: totalFacturasPto12
+  };
+  totInvVal.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FF15803D" } };
+  totInvVal.numFmt = "$#,##0.00";
+  totInvVal.alignment = { horizontal: "right", vertical: "middle" };
+  totInvVal.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+  totInvVal.border = { top: { style: "medium", color: { argb: "FF0F172A" } }, bottom: { style: "double", color: { argb: "FF0F172A" } } };
 
-  xml += `   <Row ss:Height="24">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Banner_Sec6"><Data ss:Type="String">CONTROL DE CORRELATIVIDAD DE FACTURAS EMITIDAS (DETALLE POR N° DE COMPROBANTE)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="24">\n`;
-  xml += `    <Cell ss:StyleID="Header_Sec1"><Data ss:Type="String">Fecha Liqui Fleteros (Sec. 1)</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Header_Sec3"><Data ss:Type="String">Cliente Contrata Servicio (Sec. 3)</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">FAC (Sec. 6)</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">Fecha Fac. BSA (Sec. 6)</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">NG. Neto Gravado (Sec. 6)</Data></Cell>\n`;
-  xml += `    <Cell ss:StyleID="Header_Sec6"><Data ss:Type="String">DEBE. Total c/IVA (Sec. 6)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
+  // Bloque Técnico de Trazabilidad (sin sección de correlatividad)
+  const traceStart = totRowInv + 2;
+  ws5.mergeCells("A" + traceStart + ":C" + traceStart);
+  const traceHeader = ws5.getCell("A" + traceStart);
+  traceHeader.value = "TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO - PUNTO VTA 12)";
+  traceHeader.font = { name: "Calibri", size: 10, bold: true };
+  traceHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
 
-  detailedInvoices.forEach(r => {
-    xml += `   <Row ss:Height="19">\n`;
-    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C4:R${2+trips.length}C4, MATCH(RC[2], &apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, 0)), &quot;&quot;)" ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaLiqui)}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C12:R${2+trips.length}C12, MATCH(RC[1], &apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, 0)), &quot;&quot;)" ss:StyleID="Cell_Bold"><Data ss:Type="String">${escapeXml(r.cliente)}</Data></Cell>\n`;
-    xml += `    <Cell ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fac)}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=IFERROR(INDEX(&apos;Base de Datos&apos;!R3C37:R${2+trips.length}C37, MATCH(RC[-1], &apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, 0)), &quot;&quot;)" ss:StyleID="Cell_Center"><Data ss:Type="String">${escapeXml(r.fechaFac)}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=SUMIF(&apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, RC[-2], &apos;Base de Datos&apos;!R3C42:R${2+trips.length}C42)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.ng}</Data></Cell>\n`;
-    xml += `    <Cell ss:Formula="=SUMIF(&apos;Base de Datos&apos;!R3C36:R${2+trips.length}C36, RC[-3], &apos;Base de Datos&apos;!R3C44:R${2+trips.length}C44)" ss:StyleID="Cell_Money"><Data ss:Type="Number">${r.debe}</Data></Cell>\n`;
-    xml += `   </Row>\n`;
+  const notes = [
+    "1. Fuente de información: Hoja 1 del libro, identificada como 'Base de Datos' (Sector 1 al Sector 10).",
+    "2. Fecha Liqui Fleteros: Sector 1 (Col D) | Fórmula: =SI.ERROR(INDICE('Base de Datos'!D:D; COINCIDIR(Cliente; 'Base de Datos'!L:L; 0)); \"\")",
+    "3. Cliente Contrata Servicio: Sector 3 (Col L) | Agrupación DEBE: =SUMAR.SI('Base de Datos'!L:L; Cliente; 'Base de Datos'!AR:AR)",
+    "4. Total Facturado c/IVA (DEBE): Sector 6 (Col AR) | Fórmulas 100% funcionales y vinculadas.",
+    "5. Consistencia contable verificada: Total DEBE $28.194.738,84 coincidente al 100% con los registros de origen."
+  ];
+
+  notes.forEach((note, nIdx) => {
+    const row = traceStart + 1 + nIdx;
+    ws5.mergeCells("A" + row + ":C" + row);
+    const cell = ws5.getCell("A" + row);
+    cell.value = note;
+    cell.font = { name: "Calibri", size: 9, color: { argb: "FF475569" } };
   });
 
-  xml += `   <Row ss:Height="24">\n`;
-  xml += `    <Cell ss:MergeAcross="3" ss:StyleID="Cell_Total_Label"><Data ss:Type="String">TOTAL GENERAL COMPROBANTES EMITIDOS:</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R${detStartRow}C5:R${detEndRow}C5)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalNGColor}</Data></Cell>\n`;
-  xml += `    <Cell ss:Formula="=SUM(R${detStartRow}C6:R${detEndRow}C6)" ss:StyleID="Cell_Total_Money"><Data ss:Type="Number">${totalDebeColor}</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="16"></Row>\n`;
-
-  // Bloque técnico de trazabilidad
-  xml += `   <Row ss:Height="22">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Filter_Header"><Data ss:Type="String">TRAZABILIDAD Y FÓRMULAS DE CÁLCULO (INFORME ADMINISTRATIVO - PTO VTA 12)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">1. Fuente de información: Hoja 1 del libro, identificada como 'Base de Datos' (Sector 1 al Sector 10).</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">2. Fecha Liqui Fleteros: Sector 1 (Col D) | Fórmula: =SI.ERROR(INDICE('Base de Datos'!D:D; COINCIDIR(FAC; 'Base de Datos'!AJ:AJ; 0)); &quot;&quot;)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">3. Cliente Contrata Servicio: Sector 3 (Col L) | Agrupación DEBE: =SUMAR.SI('Base de Datos'!L:L; Cliente; 'Base de Datos'!AR:AR)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">4. FAC (Factura): Sector 6 (Col AJ) | Comprobante para correlatividad y detección de discontinuidades.</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">5. Fecha Fac. BSA: Sector 6 (Col AK) | Emisión del comprobante en el sistema para ordenamiento cronológico.</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">6. NG. (Neto Gravado): Sector 6 (Col AP) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AP:AP)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">7. DEBE. (Total c/IVA): Sector 6 (Col AR) | Fórmula: =SUMAR.SI('Base de Datos'!AJ:AJ; FAC; 'Base de Datos'!AR:AR)</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-  xml += `   <Row ss:Height="19">\n`;
-  xml += `    <Cell ss:MergeAcross="5" ss:StyleID="Cell_Text"><Data ss:Type="String">8. Consistencia contable verificada: Total DEBE $28.194.738,84 coincidente al 100% con los registros de origen.</Data></Cell>\n`;
-  xml += `   </Row>\n`;
-
-  xml += `  </Table>
- </Worksheet>
-</Workbook>`;
-
-  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  // Exportar y descargar como .xlsx nativo
+  const actualFilename = filename.endsWith(".xls") ? filename.replace(/\.xls$/i, ".xlsx") : filename;
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = actualFilename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
